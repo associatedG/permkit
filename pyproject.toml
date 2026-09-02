@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "permkit"
+version = "0.1.0"
+description = "Role-based authorization for Django: endpoint, object and field tiers, configured in data."
+requires-python = ">=3.11"
+dependencies = [
+    "django>=5.2",
+]
+
+[project.optional-dependencies]
+drf = ["djangorestframework>=3.15"]
+dev = ["djangorestframework>=3.15", "pytest>=8", "pytest-django>=4.8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
