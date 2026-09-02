@@ -18,6 +18,11 @@ dev = ["djangorestframework>=3.15", "pytest>=8", "pytest-django>=4.8"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The preview screen's template. Without this it is missing from a built
+# wheel and the admin page 500s on a real install but not in the repo.
+[tool.setuptools.package-data]
+permkit = ["templates/permkit/*.html"]
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 python_files = ["test_*.py"]

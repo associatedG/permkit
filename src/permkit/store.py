@@ -11,11 +11,13 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Protocol, Sequence, runtime_checkable
 
 from .models import (
-    FieldGrant,
-    ObjectGrant,
-    RoleEndpointGrant,
-    RoleFieldGrant,
-    RoleObjectGrant,
+    Permission,
+    PermissionAction,
+    PermissionFieldGrant,
+    PermissionRule,
+    PermissionRuleCondition,
+    Role,
+    RolePermission,
     normalize_role,
 )
 
@@ -55,46 +57,72 @@ def _parse_conditions(raw: Iterable[Mapping]) -> tuple[tuple[str, Mapping], ...]
 
 
 class DatabaseStore:
-    """Reads grants from the permkit tables."""
+    """Resolves grants through the composition tables.
+
+    Every query starts from the roles the principal resolver produced and
+    joins out through ``RolePermission`` — so a permission nobody holds costs
+    nothing, and a role with no permissions returns empty rather than open.
+
+    The three methods return exactly what ``MemoryStore`` returns, which is
+    what keeps the resolver ignorant of where rules are stored and lets the
+    suite be written against the fast store.
+    """
 
     def has_endpoint_grant(self, roles: Sequence[str], key: str) -> bool:
         if not roles:
             return False
-        return RoleEndpointGrant.objects.filter(role__in=roles, key=key).exists()
+        return PermissionAction.objects.filter(
+            permission__role_bindings__role__key__in=roles, action__key=key
+        ).exists()
 
     def object_grants(self, roles: Sequence[str], key: str) -> list[ObjectGrantData]:
         if not roles:
             return []
-        qs = (
-            ObjectGrant.objects.filter(key=key, role_bindings__role__in=roles)
+        object_key, _, action_key = key.rpartition(".")
+        rules = (
+            PermissionRule.objects.filter(
+                permission__role_bindings__role__key__in=roles,
+                object__key=object_key,
+                action_key=action_key,
+            )
+            .select_related("permission", "object")
+            .prefetch_related("conditions__filter")
             .distinct()
-            .order_by("name")
         )
         return [
             ObjectGrantData(
-                name=g.name, key=g.key, conditions=_parse_conditions(g.conditions)
+                name=rule.name,
+                key=key,
+                conditions=tuple(
+                    (c.filter.key, c.params or {}) for c in rule.conditions.all()
+                ),
             )
-            for g in qs
+            for rule in rules
         ]
 
     def field_grants(self, roles: Sequence[str], key: str) -> list[FieldGrantData]:
         if not roles:
             return []
-        qs = (
-            FieldGrant.objects.filter(key=key, role_bindings__role__in=roles)
+        object_key, _, action_key = key.rpartition(".")
+        grants = (
+            PermissionFieldGrant.objects.filter(
+                permission__role_bindings__role__key__in=roles,
+                field_group__object__key=object_key,
+                action_key=action_key,
+            )
+            .select_related("permission", "field_group")
             .distinct()
-            .order_by("name")
         )
         return [
             FieldGrantData(
-                name=g.name,
-                key=g.key,
-                allowed_fields=frozenset(g.allowed_fields),
+                name=f"{g.permission.key}/{g.field_group.key}",
+                key=key,
+                allowed_fields=frozenset(g.field_group.fields or ()),
                 allowed_values={
                     f: frozenset(v) for f, v in (g.allowed_values or {}).items()
                 },
             )
-            for g in qs
+            for g in grants
         ]
 
 
@@ -174,30 +202,78 @@ class MemoryStore:
         return [seen[n] for n in sorted(seen)]
 
 
-def seed_database_from(store: MemoryStore) -> None:
-    """Persist a MemoryStore's grants into the database tables."""
-    for role, key in sorted(store._endpoint):
-        RoleEndpointGrant.objects.get_or_create(role=role, key=key)
-    for role, data in store._object:
-        grant, _ = ObjectGrant.objects.update_or_create(
-            name=data.name,
-            defaults={
-                "key": data.key,
-                "conditions": [
-                    {"condition": b, "params": dict(p)} for b, p in data.conditions
-                ],
-            },
+def seed_database_from(store: MemoryStore, *, prefix: str = "seeded") -> None:
+    """Persist a MemoryStore's grants as composed permissions.
+
+    One permission per role, which is the flat shape a fixture describes.  It
+    is not how a human would compose them — the point of the abstract role is
+    that several roles share one permission — but for seeding a demo or a test
+    it is the honest translation of "this role may do these things".
+
+    Every reference is a foreign key now, so a fixture naming a filter that
+    code does not declare fails here rather than resolving to nothing at
+    request time.
+    """
+    from .catalogue.models import (
+        RegisteredAction,
+        RegisteredFieldGroup,
+        RegisteredFilter,
+        RegisteredObject,
+    )
+
+    def permission_for(role_key: str) -> Permission:
+        role, _ = Role.objects.get_or_create(
+            key=normalize_role(role_key), defaults={"label": role_key}
         )
-        RoleObjectGrant.objects.get_or_create(role=role, grant=grant)
-    for role, data in store._field:
-        grant, _ = FieldGrant.objects.update_or_create(
-            name=data.name,
-            defaults={
-                "key": data.key,
-                "allowed_fields": sorted(data.allowed_fields),
-                "allowed_values": {
-                    f: sorted(v) for f, v in data.allowed_values.items()
+        permission, _ = Permission.objects.get_or_create(
+            key=f"{prefix}-{role.key}",
+            defaults={"name": f"{role_key} (seeded)"},
+        )
+        RolePermission.objects.get_or_create(role=role, permission=permission)
+        return permission
+
+    for role_key, key in sorted(store._endpoint):
+        PermissionAction.objects.get_or_create(
+            permission=permission_for(role_key),
+            action=RegisteredAction.objects.get(key=key),
+        )
+
+    for role_key, data in store._object:
+        object_key, _, action_key = data.key.rpartition(".")
+        permission = permission_for(role_key)
+        rule, _ = PermissionRule.objects.get_or_create(
+            permission=permission,
+            object=RegisteredObject.objects.get(key=object_key),
+            action_key=action_key,
+            label=data.name,
+            defaults={"order": permission.rules.count()},
+        )
+        for order, (condition_id, params) in enumerate(data.conditions):
+            PermissionRuleCondition.objects.get_or_create(
+                rule=rule,
+                filter=RegisteredFilter.objects.get(key=condition_id),
+                defaults={"params": dict(params), "order": order},
+            )
+
+    for role_key, data in store._field:
+        object_key, _, action_key = data.key.rpartition(".")
+        # A fixture lists fields; the catalogue grants groups. Every group
+        # wholly contained in the fixture's allow-list is granted — a group
+        # only partly listed is not, because granting it would hand out a
+        # field the fixture did not ask for.
+        groups = RegisteredFieldGroup.objects.filter(object__key=object_key)
+        for group in groups:
+            if not set(group.fields or ()) <= data.allowed_fields:
+                continue
+            PermissionFieldGrant.objects.get_or_create(
+                permission=permission_for(role_key),
+                field_group=group,
+                action_key=action_key,
+                defaults={
+                    "allowed_values": {
+                        f: sorted(v)
+                        for f, v in data.allowed_values.items()
+                        if f in (group.fields or ())
+                    }
                 },
-            },
-        )
-        RoleFieldGrant.objects.get_or_create(role=role, grant=grant)
+            )

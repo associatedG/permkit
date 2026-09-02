@@ -340,10 +340,11 @@ class Policy:
             else:
                 conds = " AND ".join(b for b, _ in grant.conditions)
                 trace.add(f"object grant {grant.name!r}: {conds}")
+        in_scope = None
         if obj is not None:
+            in_scope = self.check_object(user, key, obj)
             trace.add(
-                f"object {obj!r}: "
-                f"{'in scope' if self.check_object(user, key, obj) else 'OUT of scope'}"
+                f"object {obj!r}: {'in scope' if in_scope else 'OUT of scope'}"
             )
 
         granted = self.granted_fields(user, key)
@@ -354,5 +355,9 @@ class Policy:
                 f"withheld={hidden or '∅'}"
             )
 
-        trace.allowed = endpoint_ok
+        # When a row was named, the question asked was "may they do this to
+        # *this row*", and the object tier is half that answer. Reporting the
+        # endpoint verdict alone would tell an administrator "allowed" about a
+        # row the same policy refuses.
+        trace.allowed = endpoint_ok if in_scope is None else (endpoint_ok and in_scope)
         return trace

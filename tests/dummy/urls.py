@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.contrib import admin
 from django.urls import path
 
 from .views import (
@@ -15,6 +16,8 @@ from .views import (
 )
 
 urlpatterns = [
+    # Where permissions are configured, for the demo.
+    path("admin/", admin.site.urls),
     # read
     path("widgets/", WidgetListApi.as_view(), name="widget-list"),
     path("widgets/<int:pk>/", WidgetDetailApi.as_view(), name="widget-detail"),

@@ -6,8 +6,8 @@ Four tiers, built bottom-up. Each row says who writes it and where it lives.
 |---|---|---|---|
 | 0. Declaration | code, beside the component | developer | **done** |
 | 1. Catalogue | DB, synced from code | generated | **done** |
-| 2. Composition | DB, via Django admin | admin | **next** |
-| 3. Assignment | DB, via Django admin | end user | not started |
+| 2. Composition | DB, via Django admin | admin | **done** |
+| 3. Assignment | DB, via Django admin | end user | **done** |
 
 Tier 1 is the blocker for everything above it: an admin UI cannot enumerate a
 Python registry, so the declarations have to become data before anything can be
@@ -118,31 +118,53 @@ re-running sync creates, updates, revives and retires nothing.
 
 ---
 
-## Phase 3 — composition ⬅ next
+## Phase 3 — composition ✅
 
 Today's grant tables become FK-backed and gain a grouping entity — the
 **abstract role**:
 
 ```
+Role                     key, label, description                 # tier 3
 Permission               key, name, description
 PermissionAction         permission, action→RegisteredAction
-PermissionRule           permission, object, action_key, order   # one grant
+PermissionRule           permission, object, action_key, label, order
 PermissionRuleCondition  rule, filter→RegisteredFilter, params   # AND-ed
-PermissionFieldGrant     permission, field_group, mode           # READ|WRITE
-RolePermission           role, permission                        # tier 3
+PermissionFieldGrant     permission, field_group, action_key, allowed_values
+RolePermission           role→Role, permission                   # tier 3
 ```
+
+Two departures from the sketch, both forced by things the suite already
+proves:
+
+- **`PermissionFieldGrant` carries `action_key`, not a READ/WRITE mode.** The
+  keys are finer than that pair: `widget.update` and `widget.create` are both
+  writes and are deliberately separate grants — being allowed to edit a price
+  on an existing row is not being allowed to set one on a new row. A mode
+  column would have silently merged them, breaking a documented property.
+- **`Role` is a table.** It was not in the plan, and without it tier 3 has no
+  dropdown to offer: roles were free text read off the user, nothing
+  enumerated them, and a typo in an assignment granted nothing to nobody with
+  no error anywhere. The `PrincipalResolver` seam is untouched — this is the
+  list of role ids the system knows about, not how a user acquires one.
+
+The free-text tables (`ObjectGrant`, `FieldGrant`, `Role*Grant`) are gone
+rather than kept alongside. Nothing real was wired to them, and leaving two
+grant systems in place would have meant an admin UI showing two competing
+answers to "what may this role do?".
 
 Semantics are unchanged and already proven: rules union, conditions within a
 rule intersect, field groups union. `DatabaseStore` resolves through these
 instead of the current free-text tables; `MemoryStore` and the resolver are
 untouched, which is why the existing suite survives.
 
-The parity test to keep: a permission composed of two rules must produce the
-same `Q` as today's hand-written grants.
+The parity test held: `test_database_store_matches_memory_store` seeds the
+keeper's two hand-written grants as a composed permission and asserts the rows
+are identical. The resolver and `MemoryStore` were not touched, which is why
+the rest of the suite survived unchanged.
 
 ---
 
-## Phase 4 — Django admin
+## Phase 4 — Django admin ✅
 
 Django admin has no native nested inlines, so `PermissionRule` gets its own page
 rather than adding a dependency.
@@ -154,9 +176,22 @@ rather than adding a dependency.
    *grant access when **any** rule matches; a rule matches when **all** its
    conditions hold.*
 4. **Role assignment** — role → permission checkboxes. Deliberately dull.
-5. **Preview** — pick a role, a sample user, an object; render
-   `policy.explain()`. Cheap, and it is what gives an admin confidence a rule
-   does what they meant.
+5. **Preview** — pick a user, a key, an object; render `policy.explain()`.
+   Cheap, and it is what gives an admin confidence a rule does what they meant.
+   It hangs off `PermissionAdmin.get_urls` rather than a custom `AdminSite`:
+   permkit is a pluggable app, and making consumers swap their admin site for
+   one extra page is a bad trade.
+
+Building it found a real bug: `explain()` set its verdict from the endpoint
+tier alone, so asking "may this keeper edit *this row*?" answered **allowed**
+about a row the same policy refuses. The preview is the screen that asks that
+question, which is how a latent wrong answer became a visible one.
+
+What the screens deliberately do *not* do is render a bespoke widget per
+filter param. `params` is a JSON field with the declared schema printed beside
+it and validated on save — a typo is a field error, not a rule that silently
+never matches. A generated widget per `Param` type is the obvious next
+improvement and was not worth blocking the tier on.
 
 ---
 
@@ -169,6 +204,8 @@ rather than adding a dependency.
   access this is a real gap; `pmso-service` already has an `audit` app to hook.
 - **Registry reset between tests.** The registry is process-wide and never
   reset, so a test that registers anything leaks into every later test.
+  Partly mitigated: the catalogue tests build isolated `Registry` instances
+  rather than touching the global one.
 - **Write-side coverage.** The scope-point check is sound for READ actions only;
   most write enforcement is `require_object` per row, which the registry cannot
   see.

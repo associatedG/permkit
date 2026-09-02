@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import pytest
 from django.core.management import call_command
+from django.core.exceptions import ValidationError
 from django.core.management.base import CommandError
 from django.db.models import Q
+from django.utils import timezone
 
 from permkit.base import ObjectCondition
 from permkit.catalogue.loading import load_declarations
@@ -26,8 +28,14 @@ from permkit.catalogue.models import (
     RegisteredObject,
     RegisteredScopePoint,
 )
-from permkit.catalogue.sync import sync_catalogue
-from permkit.models import ObjectGrant, RoleEndpointGrant
+from permkit.catalogue.sync import sync_catalogue, validate
+from permkit.models import (
+    Permission,
+    PermissionAction,
+    PermissionFieldGrant,
+    PermissionRule,
+    PermissionRuleCondition,
+)
 from permkit.registry import Registry, registry as live_registry
 
 from .dummy.models import Widget
@@ -58,6 +66,22 @@ def make_registry(*, scope_point: bool = True, fields=("secret_price",)) -> Regi
     if scope_point:
         reg.register_scope_point("gadget", "view", target="somewhere.gadget_list")
     return reg
+
+
+def compose(key: str, *filter_keys: str, name: str = "composed") -> PermissionRule:
+    """A permission holding one rule, for the composition-drift tests."""
+    object_key, _, action_key = key.rpartition(".")
+    permission = Permission.objects.create(key=name, name=name)
+    rule = PermissionRule.objects.create(
+        permission=permission,
+        object=RegisteredObject.objects.get(key=object_key),
+        action_key=action_key,
+    )
+    for order, filter_key in enumerate(filter_keys):
+        PermissionRuleCondition.objects.create(
+            rule=rule, filter=RegisteredFilter.objects.get(key=filter_key), order=order
+        )
+    return rule
 
 
 # -- publishing -----------------------------------------------------------
@@ -209,55 +233,90 @@ def test_a_computed_attribute_is_a_legitimate_field_to_group():
     assert "unknown-field" not in codes(report)
 
 
-def test_a_composition_referencing_a_removed_filter_is_flagged():
-    ObjectGrant.objects.create(
-        name="legacy-rule",
-        key="widget.view",
-        conditions=[{"condition": "widget.deleted_last_year", "params": {}}],
+def test_a_composition_referencing_a_retired_filter_is_flagged():
+    """The rule keeps resolving; what is lost is the ability to reason about it.
+
+    A foreign key cannot express this — the row is still there, it just no
+    longer corresponds to anything in the code.
+    """
+    sync_catalogue()
+    compose("widget.view", "widget.warehouse")
+    RegisteredFilter.objects.filter(key="widget.warehouse").update(is_live=False)
+
+    assert "stale-filter" in [p.code for p in validate()]
+
+
+def test_a_composition_granting_a_retired_action_is_flagged():
+    sync_catalogue()
+    permission = Permission.objects.create(key="p", name="p")
+    dead = RegisteredAction.objects.create(
+        key="widget.approve", label="Approve", last_seen_at=timezone.now(), is_live=False
     )
+    PermissionAction.objects.create(permission=permission, action=dead)
 
-    report = sync_catalogue()
-
-    assert "stale-filter" in codes(report)
+    assert "stale-action" in [p.code for p in validate()]
 
 
-def test_a_composition_referencing_a_key_no_declaration_mentions_is_flagged():
-    RoleEndpointGrant.objects.create(role="w_admin", key="widget.approve")
+def test_a_rule_for_a_key_no_declaration_mentions_is_flagged():
+    """``widget.approve`` is a plausible key nobody declared. It can never match."""
+    sync_catalogue()
+    compose("widget.approve")
 
-    report = sync_catalogue()
-
-    assert "stale-key" in codes(report)
+    assert "stale-key" in [p.code for p in validate()]
 
 
 def test_a_filter_composed_onto_the_wrong_object_is_flagged_before_it_runs():
-    """The resolver already refuses this at request time; sync moves it earlier.
+    """The resolver refuses this at request time; sync moves it earlier.
 
-    A crate filter on a widget key compiles happily and filters widgets on the
-    wrong column, so the difference between catching it here and catching it
-    in production is the difference between a build failure and plausible
-    wrong rows.
+    A crate filter on a widget rule compiles happily and filters widgets on
+    the wrong column, so the difference between catching it here and catching
+    it in production is a build failure versus plausible wrong rows.
     """
-    ObjectGrant.objects.create(
-        name="crossed-rule",
-        key="widget.view",
-        conditions=[{"condition": "crate.named", "params": {"names": ["c"]}}],
+    sync_catalogue()
+    compose("widget.view", "crate.named")
+
+    assert "misfiled-filter" in [p.code for p in validate()]
+
+
+def test_the_admin_form_rejects_the_wrong_object_before_it_is_saved():
+    """The same check as a field error, so it never reaches the database."""
+    sync_catalogue()
+    rule = compose("widget.view")
+    condition = PermissionRuleCondition(
+        rule=rule, filter=RegisteredFilter.objects.get(key="crate.named")
     )
 
-    report = sync_catalogue()
+    with pytest.raises(ValidationError) as exc:
+        condition.full_clean()
 
-    assert "misfiled-filter" in codes(report)
+    assert "filter" in exc.value.error_dict
 
 
-def test_an_object_nobody_bound_to_a_model_is_a_warning_not_a_failure():
-    reg = Registry()
-    reg.register_condition("orphan.anything", object_key="orphan")(_Anything)
-    reg.register_scope_point("orphan", "view", target="somewhere.orphan_list")
+def test_the_admin_form_rejects_params_the_filter_does_not_declare():
+    sync_catalogue()
+    rule = compose("widget.view")
+    condition = PermissionRuleCondition(
+        rule=rule,
+        filter=RegisteredFilter.objects.get(key="widget.status_in"),
+        params={"wrong_name": ["DRAFT"]},
+    )
 
-    report = sync_catalogue(registry=reg, load=False)
+    with pytest.raises(ValidationError) as exc:
+        condition.full_clean()
 
-    assert "unbound-object" in [p.code for p in report.warnings]
-    assert not report.errors
-    assert RegisteredObject.objects.get(key="orphan").model_label == ""
+    assert "params" in exc.value.error_dict
+
+
+def test_a_field_grant_on_a_retired_group_is_flagged():
+    sync_catalogue()
+    PermissionFieldGrant.objects.create(
+        permission=Permission.objects.create(key="p", name="p"),
+        field_group=RegisteredFieldGroup.objects.get(key="money"),
+        action_key="view",
+    )
+    RegisteredFieldGroup.objects.filter(key="money").update(is_live=False)
+
+    assert "stale-group" in [p.code for p in validate()]
 
 
 # -- loading --------------------------------------------------------------
@@ -321,11 +380,19 @@ def test_check_passes_once_the_catalogue_is_current():
 
 
 def test_the_command_fails_the_build_on_a_stale_composition():
-    ObjectGrant.objects.create(
-        name="legacy-rule",
-        key="widget.view",
-        conditions=[{"condition": "widget.deleted_last_year"}],
-    )
+    call_command("permkit_sync", verbosity=0)
+    compose("widget.approve")
 
     with pytest.raises(CommandError, match="catalogue problem"):
         call_command("permkit_sync", verbosity=0)
+
+
+def test_the_models_and_the_migrations_agree():
+    """Catches an edited model that never got a migration.
+
+    Also guards the layout: the catalogue models live one module below
+    ``permkit/models.py`` and are only discovered because it imports them.
+    Without this test, deleting that import proposes dropping all five
+    catalogue tables and nothing says so.
+    """
+    call_command("makemigrations", "permkit", "--check", "--dry-run", verbosity=0)

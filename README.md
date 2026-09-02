@@ -45,22 +45,35 @@ REST_FRAMEWORK = {
 
 ## Configuration model
 
-Registered in **code** (typed, reviewed, CI-checkable):
+Registered in **code** (typed, reviewed, CI-checkable), and published to the
+catalogue tables by `permkit_sync`:
 
-- **keys** — one per `(resource, action)`, carrying the model and the list
-  of permission-*controlled* fields
-- **object conditions** — parameterised row rules whose only method is `as_q()`
+- **objects** — what filters and field groups are about, bound to a model
+- **filters** — parameterised row rules whose only method is `as_q()`
+- **actions** — the endpoints a component enforces
+- **field groups** — named bundles of fields, declared on the serializer
 
-Stored as **data** (admin-editable):
+Composed as **data**, in the Django admin, entirely by foreign key into that
+catalogue:
 
-- `ObjectGrant` — a key plus conditions, **AND**-ed together
-- `FieldGrant` — a key plus an **allow-list** of fields
-- `RoleEndpointGrant` / `RoleObjectGrant` / `RoleFieldGrant` — assignment
+```
+Permission                a grantable bundle — the abstract role
+  PermissionAction        endpoints it may reach
+  PermissionRule          rows it may act on — several, OR-ed
+    PermissionRuleCondition   narrowing within one rule — AND-ed
+  PermissionFieldGrant    fields it may see or write
+RolePermission            which roles hold it
+```
 
-Grants **union**; conditions within one grant **intersect**. So more grants can
-only ever add access and more conditions can only ever remove it — which is
-what makes the system answerable when someone asks "why can this user do X?".
-`policy.explain(user, key, obj)` prints that answer.
+Rules **union**; conditions within one rule **intersect**; field groups union.
+So more rules can only ever add access and more conditions can only ever
+remove it — which is what makes the system answerable when someone asks "why
+can this user do X?". The admin's preview screen prints that answer.
+
+A permission is a *job*, not a person: "browse every widget" is one permission
+that the admin and the viewer both hold, and the admin is distinguished by
+holding several more. That is also how role inheritance is avoided — a manager
+holds the keeper's permission plus an unscoped one, and grants union.
 
 ## Design rules the tests enforce
 
@@ -113,10 +126,34 @@ Finally it fails the run on the ways code and configuration drift apart:
 | `stale-key` / `stale-filter` | A grant references a key or filter no declaration mentions any more |
 | `misfiled-filter` | A grant applies one object's filter to another's key — it would filter on the wrong column |
 
+## Seeing it
+
+The dummy domain is runnable, so the admin can be opened against real rules:
+
+```bash
+export PERMKIT_DB=demo.sqlite3
+python manage.py migrate
+python manage.py permkit_sync          # publish the declarations
+python manage.py seed_dummy_roles --superuser   # compose them into roles
+python manage.py runserver
+```
+
+Then `/admin/permkit/permission/` to compose, `/admin/permkit/role/` to assign,
+and `/admin/permkit/permission/preview/` to ask why a given user can or cannot
+do a given thing to a given row. The catalogue pages are read-only: an edit
+there would be silently reverted by the next sync.
+
+`--superuser` creates a local `admin`/`admin` login. It is a superuser, and
+permkit's superuser bypass means it passes every check regardless of what you
+compose — use the preview with `demo_keeper_1` to watch real rules resolve.
+
 ## Status
 
-Tier 0 (declaration) and tier 1 (the catalogue and `permkit_sync`) are built
-and tested. Tier 2 (composition through the catalogue) is next.
+Tiers 0–4 are built and tested: declaration, the catalogue, composition,
+assignment and the admin. 205 tests, 3 skipped.
 
-No real domain is wired to it yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for
-the four tiers, what each phase delivers, and the deliberate non-goals.
+No real domain is wired to it yet — the whole suite runs against the synthetic
+`Widget` domain in `tests/dummy`, which is also what the demo above serves.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what each phase delivered, what is
+still outstanding (`permkit_coverage`, caching with invalidation, an audit
+trail) and the deliberate non-goals.

@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main">
+  <p style="max-width:52em;color:var(--body-quiet-color,#666)">
+    Ask the system what it decided, and why. Rules union and conditions
+    intersect, so a denial is rarely traceable to one row in one table —
+    this renders the whole reasoning for one user, one key and one row.
+  </p>
+
+  <form method="get">
+    <fieldset class="module aligned">
+      {{ form.as_div }}
+    </fieldset>
+    <div class="submit-row"><input type="submit" value="Explain" class="default"></div>
+  </form>
+
+  {% if error %}
+    <p class="errornote">{{ error }}</p>
+  {% endif %}
+
+  {% if trace %}
+    <h2>{% if trace.allowed %}Allowed{% else %}Denied{% endif %}</h2>
+    {# Admin theme variables, so the trace is legible in both light and dark. #}
+    <pre style="background:var(--darkened-bg,#f5f5f5);color:var(--body-fg,#303030);border:1px solid var(--hairline-color,#e8e8e8);padding:1em;border-radius:4px;white-space:pre-wrap">{{ trace }}</pre>
+  {% endif %}
+</div>
+{% endblock %}

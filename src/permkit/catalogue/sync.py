@@ -27,7 +27,12 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db import models, transaction
 from django.utils import timezone
 
-from ..models import FieldGrant, ObjectGrant, RoleEndpointGrant
+from ..models import (
+    PermissionAction,
+    PermissionFieldGrant,
+    PermissionRule,
+    PermissionRuleCondition,
+)
 from ..registry import Registry, registry as default_registry
 from .loading import LoadReport, load_declarations
 from .models import (
@@ -378,70 +383,97 @@ def _validate_declarations(registry: Registry) -> list[Problem]:
 
 
 def _validate_compositions(registry: Registry) -> list[Problem]:
-    """Check the configured grants still point at things the code declares.
+    """Check the composed permissions still point at things the code declares.
 
-    Reads the tier-2 tables as they are today.  When composition moves to
-    foreign keys into this catalogue (phase 3), the referential half of this
-    becomes the database's job and what is left here is the semantic half —
-    the object mismatch below, which no foreign key can express.
+    Foreign keys already make half of the old failures unrepresentable: a rule
+    cannot name a filter that never existed, and the admin narrows the filter
+    dropdown to the object the rule is about. What is left is what a foreign
+    key cannot express — a row that still exists but is no longer *live*,
+    because the declaration behind it has left the code — plus the object
+    mismatch, which is a legal foreign key and a wrong rule.
     """
     problems: list[Problem] = []
     known = registry.known_keys()
 
-    for grant in RoleEndpointGrant.objects.order_by("role", "key"):
-        if grant.key not in known:
+    dead_actions = PermissionAction.objects.filter(
+        action__is_live=False
+    ).select_related("permission", "action")
+    for entry in dead_actions:
+        problems.append(
+            Problem(
+                "stale-action",
+                f"Permission {entry.permission.key!r} grants action "
+                f"{entry.action.key!r}, which no component declares any more. "
+                f"Nobody can exercise it.",
+            )
+        )
+
+    rules = PermissionRule.objects.select_related("permission", "object")
+    for rule in rules:
+        if not rule.object.is_live:
+            problems.append(
+                Problem(
+                    "stale-object",
+                    f"Rule {rule.name} is about object {rule.object.key!r}, which "
+                    f"no declaration mentions any more.",
+                )
+            )
+        elif rule.key not in known:
             problems.append(
                 Problem(
                     "stale-key",
-                    f"Endpoint grant {grant.role} → {grant.key!r} names a key no "
-                    f"declaration mentions. Nobody can exercise it.",
+                    f"Rule {rule.name} is for key {rule.key!r}, which no "
+                    f"declaration mentions. It can never match.",
                 )
             )
 
-    for grant in FieldGrant.objects.all():
-        if grant.key not in known:
+    conditions = PermissionRuleCondition.objects.select_related(
+        "filter", "filter__object", "rule", "rule__object", "rule__permission"
+    )
+    for condition in conditions:
+        if not condition.filter.is_live:
             problems.append(
                 Problem(
-                    "stale-key",
-                    f"Field grant {grant.name!r} is for key {grant.key!r}, which "
-                    f"no declaration mentions.",
+                    "stale-filter",
+                    f"Rule {condition.rule.name} uses filter "
+                    f"{condition.filter.key!r}, which is no longer declared in "
+                    f"code. The rule still resolves as it did, but the filter "
+                    f"cannot be edited or reasoned about.",
+                )
+            )
+        if condition.filter.object_id != condition.rule.object_id:
+            problems.append(
+                Problem(
+                    "misfiled-filter",
+                    f"Rule {condition.rule.name} applies filter "
+                    f"{condition.filter.key!r} (declared for "
+                    f"{condition.filter.object.key!r}) to a rule about "
+                    f"{condition.rule.object.key!r}. It would filter on the "
+                    f"wrong column at request time.",
                 )
             )
 
-    for grant in ObjectGrant.objects.all():
-        if grant.key not in known:
+    field_grants = PermissionFieldGrant.objects.select_related(
+        "permission", "field_group", "field_group__object"
+    )
+    for grant in field_grants:
+        if not grant.field_group.is_live:
+            problems.append(
+                Problem(
+                    "stale-group",
+                    f"Permission {grant.permission.key!r} grants field group "
+                    f"{grant.field_group.object.key}.{grant.field_group.key}, "
+                    f"which no serializer declares any more.",
+                )
+            )
+        elif grant.key not in known:
             problems.append(
                 Problem(
                     "stale-key",
-                    f"Object grant {grant.name!r} is for key {grant.key!r}, which "
-                    f"no declaration mentions.",
+                    f"Permission {grant.permission.key!r} grants fields for key "
+                    f"{grant.key!r}, which no declaration mentions.",
                 )
             )
-        resource = grant.key.rpartition(".")[0]
-        for entry in grant.conditions or []:
-            condition_id = entry.get("condition")
-            spec = registry.conditions.get(condition_id)
-            if spec is None:
-                problems.append(
-                    Problem(
-                        "stale-filter",
-                        f"Object grant {grant.name!r} uses filter "
-                        f"{condition_id!r}, which is no longer declared in "
-                        f"code. The grant still resolves as it did, but the "
-                        f"filter cannot be edited or reasoned about.",
-                    )
-                )
-                continue
-            if spec.object_key is not None and spec.object_key != resource:
-                problems.append(
-                    Problem(
-                        "misfiled-filter",
-                        f"Object grant {grant.name!r} applies filter "
-                        f"{condition_id!r} (declared for {spec.object_key!r}) "
-                        f"to key {grant.key!r}, whose object is {resource!r}. "
-                        f"It would filter on the wrong column at request time.",
-                    )
-                )
 
     return problems
 
