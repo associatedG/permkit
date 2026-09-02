@@ -59,7 +59,7 @@ def test_unconditional_grant_widens_rather_than_narrows(
         "widget.view",
         name="mixed-narrow",
         conditions=[
-            {"block": "widget.warehouse"}
+            {"condition": "widget.warehouse"}
         ],
     )
     store.grant_object("mixed", "widget.view", name="mixed-all")  # unconditional

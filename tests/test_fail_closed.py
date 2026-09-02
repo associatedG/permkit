@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from permkit import PermissionDenied, require
 from permkit.drf import PermissionRequired
-from permkit.exceptions import ConfigurationError, InvalidParams, UnknownKey
+from permkit.exceptions import InvalidParams, UnknownKey
 
 pytestmark = pytest.mark.django_db
 
@@ -73,21 +73,13 @@ def test_anonymous_principal_is_denied(policy, grants):
         require(None, "widget.view")
 
 
-def test_scoping_a_non_scopable_key_is_a_configuration_error(
-    policy, grants, admin_user
-):
-    """``widget.create`` has no row to scope; asking is a bug, not a denial."""
-    with pytest.raises(ConfigurationError):
-        policy.scope(admin_user, "widget.create")
-
-
-def test_bad_block_params_are_rejected(policy, store, widgets, make_user):
+def test_bad_condition_params_are_rejected(policy, store, widgets, make_user):
     store.grant_endpoint("broken", "widget.view")
     store.grant_object(
         "broken",
         "widget.view",
         name="broken-grant",
-        conditions=[{"block": "widget.status_in", "params": {"nonsense": 1}}],
+        conditions=[{"condition": "widget.status_in", "params": {"nonsense": 1}}],
     )
     user = make_user(role="broken")
 

@@ -158,7 +158,7 @@ def grants(store):
         "widget.view",
         name="keeper-view-own-warehouse",
         conditions=[
-            {"block": "widget.warehouse"}
+            {"condition": "widget.warehouse"}
         ],
     )
     store.grant_object(
@@ -166,8 +166,8 @@ def grants(store):
         "widget.update",
         name="keeper-update-own-warehouse-and-assigned",
         conditions=[
-            {"block": "widget.warehouse"},
-            {"block": "widget.assigned"},
+            {"condition": "widget.warehouse"},
+            {"condition": "widget.assigned"},
         ],
     )
     # May write notes, but never sees or writes secret_price.

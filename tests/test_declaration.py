@@ -87,7 +87,7 @@ def test_a_filter_cannot_be_applied_to_another_object(
         "mixed",
         "widget.view",
         name="wrong-object",
-        conditions=[{"block": "crate.named", "params": {"names": ["crate-1"]}}],
+        conditions=[{"condition": "crate.named", "params": {"names": ["crate-1"]}}],
     )
     user = make_user(role="mixed")
 
@@ -96,15 +96,15 @@ def test_a_filter_cannot_be_applied_to_another_object(
 
 
 def test_filters_carry_their_object_key(policy):
-    assert registry.block("widget.warehouse").object_key == "widget"
-    assert registry.block("crate.named").object_key == "crate"
+    assert registry.condition("widget.warehouse").object_key == "widget"
+    assert registry.condition("crate.named").object_key == "crate"
 
 
 # -- the catalogue tier 1 will publish ----------------------------------
 
 
 def test_filters_are_registered_under_their_object(policy):
-    widget_filters = registry.filters_for("widget")
+    widget_filters = registry.conditions_for("widget")
     assert "widget.warehouse" in widget_filters
     assert "crate.named" not in widget_filters
 
@@ -116,23 +116,23 @@ def test_every_object_with_filters_has_a_scope_point(policy):
     do nothing, anywhere.
     """
     objects_with_filters = {
-        spec.object_key for spec in registry.blocks.values() if spec.object_key
+        spec.object_key for spec in registry.conditions.values() if spec.object_key
     }
     uncovered = {
         obj for obj in objects_with_filters if not registry.has_scope_point(obj)
     }
-    assert uncovered == {"crate"}, (
-        "crate filters exist only to guard the FK reference check, which is "
-        "not a scope point; widget must be covered"
+    assert uncovered == set(), (
+        "every object carrying filters must have somewhere those filters "
+        "actually fire; crate gained one when the crate picker was routed"
     )
 
 
 def test_declared_labels_reach_the_catalogue(policy):
     """Docstrings are what the admin UI shows, so they must survive registration."""
-    assert registry.block("widget.warehouse").cls.__doc__ == (
+    assert registry.condition("widget.warehouse").cls.__doc__ == (
         "Widgets in the warehouse I belong to."
     )
-    assert "values" in registry.block("widget.status_in").params
+    assert "values" in registry.condition("widget.status_in").params
 
 
 def test_field_groups_and_actions_are_registered(policy):
@@ -140,10 +140,10 @@ def test_field_groups_and_actions_are_registered(policy):
 
     actions = registry.actions
     assert actions["widget.view"].label == "List widgets"
-    assert actions["widget.update"].mode.value == "WRITE"
-    # Declared on the service, not a view — a create has no queryset to scope
-    # but is still an endpoint someone must be permitted to reach.
-    assert actions["widget.create"].mode.value == "WRITE"
+    assert actions["widget.update"].label == "Update a widget"
+    # A create has no queryset to scope, but is still an endpoint someone
+    # must be permitted to reach.
+    assert "widget.create" in actions
 
 
 # -- serializer-level declaration ---------------------------------------
@@ -224,24 +224,32 @@ def test_the_api_reaches_its_rows_through_the_selector(
 
 
 def test_a_view_reading_the_model_directly_is_only_safe_via_the_mixin(policy):
-    """The update view is the counter-example, kept deliberately.
+    """The writable-list view is the counter-example, kept deliberately.
 
     It reads ``Widget.objects`` and relies on ``ScopedQuerysetMixin``.  Nothing
     in the declaration layer would notice if a future edit dropped the mixin,
     which is the gap the coverage report exists to close.
+
+    It is a *read* route on purpose.  The mutation routes go through services
+    instead, because a generic view writing via ``serializer.save()`` enforces
+    the permission tiers and silently skips the domain invariant.
     """
     from permkit.drf import ScopedQuerysetMixin
 
-    from .dummy.views import WidgetUpdateApi
+    from .dummy.views import WidgetUpdateApi, WidgetWritableListApi
 
-    assert issubclass(WidgetUpdateApi, ScopedQuerysetMixin)
-    assert WidgetUpdateApi.queryset.model is Widget
+    assert issubclass(WidgetWritableListApi, ScopedQuerysetMixin)
+    assert WidgetWritableListApi.queryset.model is Widget
+
+    assert not issubclass(WidgetUpdateApi, ScopedQuerysetMixin), (
+        "the mutation route must not write through a generic view"
+    )
 
 
 def test_several_components_may_enforce_one_action(policy):
     """A list and its detail are one permission, declared the one way.
 
-    Both use ``@api_action``; the first supplies the label, the rest register
+    Both use ``@api_permission``; the first supplies the label, the rest register
     as further places the action is enforced.
     """
     from .dummy.views import WidgetDetailApi, WidgetListApi
@@ -257,12 +265,12 @@ def test_several_components_may_enforce_one_action(policy):
 
 def test_relabelling_an_action_is_rejected(policy):
     """Two components disagreeing about what an action *is* is a config bug."""
-    from permkit import api_action
+    from permkit import api_permission
     from permkit.exceptions import DuplicateRegistration
 
     with pytest.raises(DuplicateRegistration, match="already labelled"):
 
-        @api_action("widget.view", label="Something else")
+        @api_permission("widget.view", label="Something else")
         class Rogue:
             pass
 

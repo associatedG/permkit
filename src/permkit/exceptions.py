@@ -7,7 +7,7 @@ different kinds of "no":
 * Domain invariants ("nobody may edit a completed order") are **not** raised
   from here.  They belong in the service layer and map to 409/422.
 
-Configuration problems (unknown key, unknown block, bad params) are their own
+Configuration problems (unknown key, unknown condition, bad params) are their own
 branch so they can never be mistaken for an authorization outcome.
 """
 
@@ -40,17 +40,17 @@ class UnknownKey(ConfigurationError):
         )
 
 
-class UnknownBlock(ConfigurationError):
-    def __init__(self, block_id: str):
-        self.block_id = block_id
+class UnknownCondition(ConfigurationError):
+    def __init__(self, condition_id: str):
+        self.condition_id = condition_id
         super().__init__(
-            f"Object block {block_id!r} is not registered. "
-            f"Register it with @permkit.register_block() before use."
+            f"Object condition {condition_id!r} is not registered. "
+            f"Register it with @permkit.register_condition() before use."
         )
 
 
 class InvalidParams(ConfigurationError):
-    """A grant supplied params that do not match the block's declared schema."""
+    """A grant supplied params that do not match the condition's declared schema."""
 
 
 class DuplicateRegistration(ConfigurationError):

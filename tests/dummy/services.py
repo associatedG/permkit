@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from django.db import transaction
 
-from permkit import api_action, assert_writable, require, require_object
+from permkit import assert_writable, require, require_object
 from permkit.decorators import requires, requires_object
 
 from .models import Crate, Widget
@@ -39,7 +39,6 @@ def widget_update(*, actor, widget: Widget, **data) -> Widget:
     return widget
 
 
-@api_action("widget.create", label="Create a widget", mode="WRITE")
 @requires("widget.create")
 def widget_create(*, actor, **data) -> Widget:
     assert_writable(data, user=actor, key="widget.create")
@@ -92,3 +91,4 @@ def widget_bulk_annotate(*, actor, note: str) -> int:
         widget_update(actor=actor, widget=widget, notes=note)
         updated += 1
     return updated
+

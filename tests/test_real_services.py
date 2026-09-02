@@ -97,7 +97,7 @@ def test_reference_scope_denial_also_rolls_back(
         "crate.view",
         name="mover-crates",
         conditions=[
-            {"block": "crate.named", "params": {"names": ["crate-1"]}}
+            {"condition": "crate.named", "params": {"names": ["crate-1"]}}
         ],
     )
     store.grant_field(

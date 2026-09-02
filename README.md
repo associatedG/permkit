@@ -47,9 +47,9 @@ REST_FRAMEWORK = {
 
 Registered in **code** (typed, reviewed, CI-checkable):
 
-- **keys** — one per `(resource, action)`, carrying the read/write mode and
-  the list of permission-*controlled* fields
-- **object blocks** — parameterised conditions whose only method is `as_q()`
+- **keys** — one per `(resource, action)`, carrying the model and the list
+  of permission-*controlled* fields
+- **object conditions** — parameterised row rules whose only method is `as_q()`
 
 Stored as **data** (admin-editable):
 

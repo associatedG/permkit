@@ -2,7 +2,7 @@
 
 Three tiers, each declared where the component lives, never in a central file:
 
-* **endpoint** — ``@api_action`` on the view or service
+* **endpoint** — ``@api_permission`` on the view or service
 * **field** — ``permission_fields`` on the serializer, as named groups
 * **object** — ``@object_permissions`` on the selector, plus an explicit
   ``apply_permissions`` call inside it
@@ -20,7 +20,7 @@ from typing import Any, Callable, Mapping
 
 from django.db.models import Q
 
-from .base import Context, ObjectBlock, Param
+from .base import Context, ObjectCondition, Param
 from .exceptions import ConfigurationError
 from .registry import registry
 
@@ -47,7 +47,7 @@ def permission_object(key: str, *, model=None, label: str = "") -> None:
 # ---------------------------------------------------------------- endpoint
 
 
-def api_action(action_key: str, *, label: str = "", mode: str = "") -> Callable:
+def api_permission(action_key: str, *, label: str = "") -> Callable:
     """Declare that this component enforces an endpoint action.
 
     The endpoint tier is the simple one: a single yes/no per role, with no
@@ -66,7 +66,6 @@ def api_action(action_key: str, *, label: str = "", mode: str = "") -> Callable:
         registry.register_action(
             action_key,
             label=label,
-            mode=mode,
             target=f"{target.__module__}.{target.__qualname__}",
         )
         target.permission_action = action_key
@@ -124,8 +123,8 @@ def object_permissions(
     """
 
     def decorator(fn: Callable) -> Callable:
-        for filter_key, spec in (filters or {}).items():
-            _register_filter(object_key, filter_key, spec)
+        for condition_key, spec in (filters or {}).items():
+            _register_condition(object_key, condition_key, spec)
 
         registry.register_scope_point(
             object_key,
@@ -194,44 +193,44 @@ def _first_line(doc: str | None) -> str:
     return (doc or "").strip().splitlines()[0].strip() if doc else ""
 
 
-def _register_filter(object_key: str, filter_key: str, spec: Any) -> None:
-    """Turn a ``Q`` or a callable into a registered block."""
+def _register_condition(object_key: str, condition_key: str, spec: Any) -> None:
+    """Turn a ``Q`` or a callable into a registered condition."""
     if isinstance(spec, Q):
         as_q = lambda self, ctx, **kw: spec  # noqa: E731
-        label = f"{filter_key.replace('_', ' ').capitalize()}"
+        label = f"{condition_key.replace('_', ' ').capitalize()}"
         params: Mapping[str, Param] = {}
         multi_valued = False
     elif callable(spec):
         as_q = lambda self, ctx, **kw: spec(ctx, **kw)  # noqa: E731
-        label = _first_line(spec.__doc__) or filter_key
+        label = _first_line(spec.__doc__) or condition_key
         params = getattr(spec, "permission_params", {})
         multi_valued = getattr(spec, "permission_multi_valued", False)
     else:
         raise ConfigurationError(
-            f"Filter {object_key}.{filter_key} must be a Q or a callable "
+            f"Filter {object_key}.{condition_key} must be a Q or a callable "
             f"returning one, got {type(spec).__name__}."
         )
 
-    block_id = f"{object_key}.{filter_key}"
-    if registry.has_block(block_id):
+    condition_id = f"{object_key}.{condition_key}"
+    if registry.has_condition(condition_id):
         return  # already declared by another site for the same object
 
-    block_cls = type(
-        f"Filter_{object_key}_{filter_key}",
-        (ObjectBlock,),
+    condition_cls = type(
+        f"Filter_{object_key}_{condition_key}",
+        (ObjectCondition,),
         {"as_q": as_q, "__doc__": label},
     )
-    registry.register_block(
-        block_id,
+    registry.register_condition(
+        condition_id,
         params=params,
         multi_valued=multi_valued,
         object_key=object_key,
-    )(block_cls)
+    )(condition_cls)
 
 
-def object_filter(
+def object_condition(
     object_key: str,
-    filter_key: str,
+    condition_key: str,
     *,
     params: Mapping[str, Param] | None = None,
     multi_valued: bool = False,
@@ -245,16 +244,16 @@ def object_filter(
     def decorator(fn: Callable) -> Callable:
         fn.permission_params = dict(params or {})
         fn.permission_multi_valued = multi_valued
-        _register_filter(object_key, filter_key, fn)
+        _register_condition(object_key, condition_key, fn)
         fn.object_key = object_key
-        fn.filter_key = filter_key
-        fn.block_id = f"{object_key}.{filter_key}"
+        fn.condition_key = condition_key
+        fn.condition_id = f"{object_key}.{condition_key}"
         return fn
 
     return decorator
 
 
-def filter_params(**params: Param) -> Callable:
+def condition_params(**params: Param) -> Callable:
     """Declare open params on a filter function referenced from a selector."""
 
     def decorator(fn: Callable) -> Callable:
@@ -266,12 +265,12 @@ def filter_params(**params: Param) -> Callable:
 
 __all__ = [
     "permission_object",
-    "api_action",
+    "api_permission",
     "field_groups",
     "object_permissions",
     "apply_permissions",
-    "object_filter",
-    "filter_params",
+    "object_condition",
+    "condition_params",
     "Context",
     "Param",
 ]

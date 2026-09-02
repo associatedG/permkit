@@ -37,7 +37,7 @@ def scoped_writer(store, make_user, crates):
         "crate.view",
         name="scoped-crates",
         conditions=[
-            {"block": "crate.named", "params": {"names": ["crate-1"]}}
+            {"condition": "crate.named", "params": {"names": ["crate-1"]}}
         ],
     )
     store.grant_field(

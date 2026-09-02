@@ -23,7 +23,7 @@ def test_many_to_many_scope(policy, store, widgets, make_user):
         "widget.view",
         name="sales-own-lines",
         conditions=[
-            {"block": "widget.my_crates"}
+            {"condition": "widget.my_crates"}
         ],
     )
     crate = Crate.objects.get(name="crate-1")
@@ -48,13 +48,13 @@ def test_empty_collection_yields_no_rows(policy, store, widgets, make_user):
         "widget.view",
         name="sales-own-lines",
         conditions=[
-            {"block": "widget.my_crates"}
+            {"condition": "widget.my_crates"}
         ],
     )
     assert widget_list(fetched_by=make_user(role="sales")).count() == 0
 
 
-def test_multi_valued_block_deduplicates_rows(policy, store, widgets, make_user):
+def test_multi_valued_condition_deduplicates_rows(policy, store, widgets, make_user):
     """A to-many traversal must not return the same row twice.
 
     Without ``.distinct()`` a widget watched by three same-warehouse users
@@ -66,7 +66,7 @@ def test_multi_valued_block_deduplicates_rows(policy, store, widgets, make_user)
         "widget.view",
         name="watcher-same-warehouse",
         conditions=[
-            {"block": "widget.watched_by_my_warehouse"}
+            {"condition": "widget.watched_by_my_warehouse"}
         ],
     )
     widget = widgets["kho1_assigned"]
@@ -99,7 +99,7 @@ def test_role_dependent_state_window_is_a_scope_not_an_invariant(
             "widget.view",
             name=f"{role}-window",
             conditions=[
-                {"block": "widget.status_in", "params": {"values": statuses}}
+                {"condition": "widget.status_in", "params": {"values": statuses}}
             ],
         )
 

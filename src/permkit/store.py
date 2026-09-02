@@ -24,7 +24,7 @@ from .models import (
 class ObjectGrantData:
     name: str
     key: str
-    #: ``((block_id, params), ...)`` — AND-ed together within this grant.
+    #: ``((condition_id, params), ...)`` — AND-ed together within this grant.
     conditions: tuple[tuple[str, Mapping], ...] = ()
 
 
@@ -51,7 +51,7 @@ class GrantStore(Protocol):
 
 
 def _parse_conditions(raw: Iterable[Mapping]) -> tuple[tuple[str, Mapping], ...]:
-    return tuple((c["block"], c.get("params", {})) for c in raw)
+    return tuple((c["condition"], c.get("params", {})) for c in raw)
 
 
 class DatabaseStore:
@@ -184,7 +184,7 @@ def seed_database_from(store: MemoryStore) -> None:
             defaults={
                 "key": data.key,
                 "conditions": [
-                    {"block": b, "params": dict(p)} for b, p in data.conditions
+                    {"condition": b, "params": dict(p)} for b, p in data.conditions
                 ],
             },
         )

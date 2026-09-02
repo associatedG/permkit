@@ -104,11 +104,6 @@ class Policy:
 
     def scope(self, user, key: str) -> ScopeResult:
         spec = self._spec(key)
-        if not spec.scopable:
-            raise ConfigurationError(
-                f"Key {key!r} is not scopable — it has no row to scope. "
-                f"Use the endpoint and field tiers instead."
-            )
         if self._is_superuser(user):
             return ScopeResult(ScopeKind.ALL)
 
@@ -139,26 +134,26 @@ class Policy:
                 return ScopeResult(ScopeKind.ALL)
 
             conjunction: Q | None = None
-            for block_id, raw_params in grant.conditions:
-                block_spec = self.registry.block(block_id)
+            for condition_id, raw_params in grant.conditions:
+                condition_spec = self.registry.condition(condition_id)
                 # A filter declared for one object must not be composed onto
                 # another.  Left unchecked, a ``crate`` filter on a ``widget``
                 # action compiles happily and filters widgets on the wrong
                 # column — no error, plausible rows, silently wrong.
                 if (
-                    block_spec.object_key is not None
-                    and block_spec.object_key != spec.resource
+                    condition_spec.object_key is not None
+                    and condition_spec.object_key != spec.resource
                 ):
                     raise ConfigurationError(
-                        f"Filter {block_id!r} is declared for object "
-                        f"{block_spec.object_key!r} but grant {grant.name!r} "
+                        f"Filter {condition_id!r} is declared for object "
+                        f"{condition_spec.object_key!r} but grant {grant.name!r} "
                         f"applies it to {key!r}, whose object is "
                         f"{spec.resource!r}."
                     )
-                params = block_spec.bind(raw_params)
-                block_q = block_spec.cls().as_q(ctx, **params)
-                conjunction = block_q if conjunction is None else conjunction & block_q
-                needs_distinct = needs_distinct or block_spec.multi_valued
+                params = condition_spec.bind(raw_params)
+                condition_q = condition_spec.cls().as_q(ctx, **params)
+                conjunction = condition_q if conjunction is None else conjunction & condition_q
+                needs_distinct = needs_distinct or condition_spec.multi_valued
 
             combined = conjunction if combined is None else combined | conjunction
 
@@ -336,21 +331,20 @@ class Policy:
         )
 
         spec = self._spec(key)
-        if spec.scopable:
-            grants = self.store.object_grants(trace.roles, key)
-            if not grants:
-                trace.add("object grants: none → deny all rows")
-            for grant in grants:
-                if not grant.conditions:
-                    trace.add(f"object grant {grant.name!r}: unconditional → all rows")
-                else:
-                    conds = " AND ".join(b for b, _ in grant.conditions)
-                    trace.add(f"object grant {grant.name!r}: {conds}")
-            if obj is not None:
-                trace.add(
-                    f"object {obj!r}: "
-                    f"{'in scope' if self.check_object(user, key, obj) else 'OUT of scope'}"
-                )
+        grants = self.store.object_grants(trace.roles, key)
+        if not grants:
+            trace.add("object grants: none → deny all rows")
+        for grant in grants:
+            if not grant.conditions:
+                trace.add(f"object grant {grant.name!r}: unconditional → all rows")
+            else:
+                conds = " AND ".join(b for b, _ in grant.conditions)
+                trace.add(f"object grant {grant.name!r}: {conds}")
+        if obj is not None:
+            trace.add(
+                f"object {obj!r}: "
+                f"{'in scope' if self.check_object(user, key, obj) else 'OUT of scope'}"
+            )
 
         granted = self.granted_fields(user, key)
         if spec.fields:

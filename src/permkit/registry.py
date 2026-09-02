@@ -1,4 +1,4 @@
-"""The code-side registry of keys and object blocks.
+"""The code-side registry of keys and object conditions.
 
 Registration is what makes the system fail *closed* and *loudly*.  A key that
 was never registered is denied and raises on lookup, rather than resolving to
@@ -13,22 +13,21 @@ from typing import Any, Iterable, Mapping
 from .base import (
     ActionSpec,
     ObjectSpec,
-    BlockSpec,
+    ConditionSpec,
     FieldGroupSpec,
     KeySpec,
-    Mode,
-    ObjectBlock,
+    ObjectCondition,
     Param,
     ScopePointSpec,
 )
-from .exceptions import DuplicateRegistration, UnknownBlock, UnknownKey
+from .exceptions import DuplicateRegistration, UnknownCondition, UnknownKey
 
 
 class Registry:
     def __init__(self) -> None:
         self._objects: dict[str, ObjectSpec] = {}
         self._keys: dict[str, KeySpec] = {}
-        self._blocks: dict[str, BlockSpec] = {}
+        self._conditions: dict[str, ConditionSpec] = {}
         self._actions: dict[str, ActionSpec] = {}
         self._field_groups: dict[tuple[str, str], FieldGroupSpec] = {}
         # A list per (object, action): several sites may legitimately scope the
@@ -42,10 +41,8 @@ class Registry:
         id: str,
         *,
         resource: str,
-        mode: Mode,
         model: type | None = None,
         fields: Iterable[str] = (),
-        scopable: bool = True,
         fk_scopes: Mapping[str, str] | None = None,
     ) -> KeySpec:
         if id in self._keys:
@@ -53,16 +50,14 @@ class Registry:
         spec = KeySpec(
             id=id,
             resource=resource,
-            mode=Mode(mode),
             model=model,
             fields=frozenset(fields),
-            scopable=scopable,
             fk_scopes=dict(fk_scopes or {}),
         )
         self._keys[id] = spec
         return spec
 
-    def register_block(
+    def register_condition(
         self,
         id: str,
         *,
@@ -70,16 +65,16 @@ class Registry:
         multi_valued: bool = False,
         object_key: str | None = None,
     ):
-        def decorator(cls: type[ObjectBlock]) -> type[ObjectBlock]:
-            if id in self._blocks:
+        def decorator(cls: type[ObjectCondition]) -> type[ObjectCondition]:
+            if id in self._conditions:
                 raise DuplicateRegistration(
-                    f"Block {id!r} is already registered."
+                    f"Condition {id!r} is already registered."
                 )
-            if not issubclass(cls, ObjectBlock):
+            if not issubclass(cls, ObjectCondition):
                 raise TypeError(
-                    f"{cls.__name__} must subclass ObjectBlock to be registered."
+                    f"{cls.__name__} must subclass ObjectCondition to be registered."
                 )
-            self._blocks[id] = BlockSpec(
+            self._conditions[id] = ConditionSpec(
                 id=id,
                 cls=cls,
                 params=dict(params or {}),
@@ -134,22 +129,14 @@ class Registry:
 
 
     def register_action(
-        self, key: str, *, label: str = "", mode: str = "READ", target: str = ""
+        self, key: str, *, label: str = "", target: str = ""
     ) -> ActionSpec:
         """Declare an action, or add another component that enforces it."""
         existing = self._actions.get(key)
         if existing is None:
-            # Mode falls back to the same action-name convention the derived
-            # KeySpec uses, so a plain re-declaration need not restate it.
-            resolved = Mode(mode) if mode else (
-                Mode.READ
-                if key.rpartition(".")[2] in self.READ_ACTIONS
-                else Mode.WRITE
-            )
             spec = ActionSpec(
                 key=key,
                 label=label or key,
-                mode=resolved,
                 targets=(target,) if target else (),
             )
             self._actions[key] = spec
@@ -160,15 +147,9 @@ class Registry:
                 f"Action {key!r} is already labelled {existing.label!r}; "
                 f"cannot relabel to {label!r}."
             )
-        if mode and Mode(mode) != existing.mode:
-            raise DuplicateRegistration(
-                f"Action {key!r} is already {existing.mode.value}; "
-                f"cannot redeclare as {mode}."
-            )
         merged = ActionSpec(
             key=existing.key,
             label=existing.label,
-            mode=existing.mode,
             targets=tuple(dict.fromkeys((*existing.targets, target))) if target
             else existing.targets,
         )
@@ -211,11 +192,6 @@ class Registry:
 
     # -- lookup -----------------------------------------------------------
 
-    #: Actions treated as reads when no ``@api_action`` declares otherwise.
-    READ_ACTIONS = frozenset({"view", "list", "detail", "read", "export"})
-    #: Actions with no row yet, so nothing to scope.
-    CREATE_ACTIONS = frozenset({"create", "add"})
-
     def known_keys(self) -> set[str]:
         """Every key some declaration mentions.
 
@@ -234,8 +210,8 @@ class Registry:
         """Assemble a key from the component declarations that mention it.
 
         Nothing declares a key as a whole any more: the object binds the model,
-        the selector says whether it is scopable, the serializer contributes the
-        controlled fields and governed references, and ``@api_action`` supplies
+        the selector says where it is scoped, the serializer contributes the
+        controlled fields and governed references, and ``@api_permission`` supplies
         the mode.  Explicitly registered keys still win, for the rare case that
         needs one.
         """
@@ -247,7 +223,6 @@ class Registry:
         if obj is None or not action or id not in self.known_keys():
             raise UnknownKey(id)
 
-        declared = self._actions.get(id)
         fields = frozenset(
             name
             for group in self.field_groups_for(object_key).values()
@@ -256,38 +231,30 @@ class Registry:
         return KeySpec(
             id=id,
             resource=object_key,
-            mode=(
-                declared.mode
-                if declared
-                else (Mode.READ if action in self.READ_ACTIONS else Mode.WRITE)
-            ),
             model=obj.model,
             fields=fields,
-            # "Has rows to scope" — a different question from "some selector
-            # applies filters here", which is the coverage check.
-            scopable=obj.model is not None and action not in self.CREATE_ACTIONS,
             fk_scopes=dict(obj.references),
         )
 
-    def block(self, id: str) -> BlockSpec:
+    def condition(self, id: str) -> ConditionSpec:
         try:
-            return self._blocks[id]
+            return self._conditions[id]
         except KeyError:
-            raise UnknownBlock(id) from None
+            raise UnknownCondition(id) from None
 
     def has_key(self, id: str) -> bool:
         return id in self.known_keys()
 
-    def has_block(self, id: str) -> bool:
-        return id in self._blocks
+    def has_condition(self, id: str) -> bool:
+        return id in self._conditions
 
     @property
     def keys(self) -> dict[str, KeySpec]:
         return dict(self._keys)
 
     @property
-    def blocks(self) -> dict[str, BlockSpec]:
-        return dict(self._blocks)
+    def conditions(self) -> dict[str, ConditionSpec]:
+        return dict(self._conditions)
 
     @property
     def actions(self) -> dict[str, ActionSpec]:
@@ -303,10 +270,10 @@ class Registry:
 
     # -- catalogue queries ------------------------------------------------
 
-    def filters_for(self, object_key: str) -> dict[str, BlockSpec]:
+    def conditions_for(self, object_key: str) -> dict[str, ConditionSpec]:
         return {
             spec.id: spec
-            for spec in self._blocks.values()
+            for spec in self._conditions.values()
             if spec.object_key == object_key
         }
 
@@ -332,7 +299,7 @@ class Registry:
         """Drop all registrations. Test helper; never call at runtime."""
         self._objects.clear()
         self._keys.clear()
-        self._blocks.clear()
+        self._conditions.clear()
         self._actions.clear()
         self._field_groups.clear()
         self._scope_points.clear()
@@ -345,5 +312,5 @@ def register_key(id: str, **kwargs: Any) -> KeySpec:
     return registry.register_key(id, **kwargs)
 
 
-def register_block(id: str, **kwargs: Any):
-    return registry.register_block(id, **kwargs)
+def register_condition(id: str, **kwargs: Any):
+    return registry.register_condition(id, **kwargs)

@@ -18,49 +18,48 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping
 
-from .base import Context, Mode, ObjectBlock, Param, Tier
+from .base import Context, ObjectCondition, Param, Tier
 from .exceptions import (
     ConfigurationError,
     InvalidParams,
     PermissionDenied,
     PermKitError,
-    UnknownBlock,
+    UnknownCondition,
     UnknownKey,
 )
 from .declare import (
-    api_action,
+    api_permission,
     apply_permissions,
     field_groups,
-    filter_params,
-    object_filter,
+    condition_params,
+    object_condition,
     object_permissions,
     permission_object,
 )
-from .registry import register_block, register_key, registry
+from .registry import register_condition, register_key, registry
 
 default_app_config = "permkit.apps.PermkitConfig"
 
 __all__ = [
     "Context",
-    "Mode",
-    "ObjectBlock",
+    "ObjectCondition",
     "Param",
     "Tier",
     "PermKitError",
     "PermissionDenied",
     "ConfigurationError",
     "UnknownKey",
-    "UnknownBlock",
+    "UnknownCondition",
     "InvalidParams",
     "register_key",
-    "register_block",
-    "object_filter",
+    "register_condition",
+    "object_condition",
     "permission_object",
     "object_permissions",
     "apply_permissions",
-    "api_action",
+    "api_permission",
     "field_groups",
-    "filter_params",
+    "condition_params",
     "registry",
     "require",
     "apply_scope",

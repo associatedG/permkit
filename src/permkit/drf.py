@@ -99,9 +99,6 @@ class PermissionRequired(BasePermission):
             return False
         try:
             return check_object(request.user, key, obj)
-        except ConfigurationError:
-            # Not a scopable key — the endpoint tier already decided.
-            return True
         except UnknownKey:
             return False
 

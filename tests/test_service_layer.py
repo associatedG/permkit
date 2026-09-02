@@ -32,7 +32,7 @@ def test_create_is_denied_without_the_grant(policy, grants, keeper_kho1):
 
 
 def test_create_enforces_write_field_permissions(policy, store, grants, make_user):
-    """A non-scopable key still carries a field tier."""
+    """A create has no rows, and still carries a field tier."""
     store.grant_endpoint("creator", "widget.create")
     store.grant_field(
         "creator", "widget.create", name="creator-notes", allowed_fields=["notes"]

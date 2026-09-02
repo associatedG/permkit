@@ -29,7 +29,7 @@ class ObjectGrant(models.Model):
 
     name = models.SlugField(max_length=200, unique=True)
     key = models.CharField(max_length=200, db_index=True)
-    #: ``[{"block": "object.owned_by", "params": {"field": "owner"}}, ...]``
+    #: ``[{"condition": "object.owned_by", "params": {"field": "owner"}}, ...]``
     #: Conditions within one grant intersect; grants themselves union.
     conditions = models.JSONField(default=list, blank=True)
 
