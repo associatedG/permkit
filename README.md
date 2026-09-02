@@ -88,5 +88,9 @@ abstraction is wrong — not a reason to import a production model.
 
 ## Status
 
-Mechanism only. No real domain is wired to it yet; per-domain keys, blocks and
-grants are configured separately once the mechanism is settled.
+Tier 0 (declaration) is built and tested. Tier 1 (the catalogue tables and
+`permkit_sync`) is next, and is the blocker for the admin UI — nothing can
+compose from a registry that lives only in memory.
+
+No real domain is wired to it yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for
+the four tiers, what each phase delivers, and the deliberate non-goals.
