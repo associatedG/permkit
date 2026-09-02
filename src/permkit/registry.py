@@ -249,6 +249,10 @@ class Registry:
         return id in self._conditions
 
     @property
+    def objects(self) -> dict[str, ObjectSpec]:
+        return dict(self._objects)
+
+    @property
     def keys(self) -> dict[str, KeySpec]:
         return dict(self._keys)
 

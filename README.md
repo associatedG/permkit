@@ -86,11 +86,37 @@ The suite runs entirely against the synthetic `Widget` domain in `tests/dummy`.
 If a rule cannot be expressed against `Widget`, that is evidence the
 abstraction is wrong — not a reason to import a production model.
 
+## The catalogue
+
+The registry lives in memory, which is enough to enforce with and useless to
+compose from: an admin UI cannot enumerate a Python object graph, and a grant
+cannot hold a foreign key into one. `permkit_sync` publishes it as rows.
+
+```bash
+python manage.py migrate
+python manage.py permkit_sync          # after every deploy
+python manage.py permkit_sync --check  # in CI: writes nothing, fails on drift
+```
+
+It forces every declaration module in before scraping — a sync run never
+serves a request, so it cannot rely on the URLconf having imported the code
+the way a first request would. It then upserts, **never deletes**: a
+declaration that has gone from the code is marked `is_live=False`, so a grant
+pointing at it keeps resolving exactly as it did while showing up as broken.
+
+Finally it fails the run on the ways code and configuration drift apart:
+
+| Code | Means |
+|---|---|
+| `filters-never-fire` | An object has filters but no selector applies them — nothing an admin composes from them can take effect |
+| `unknown-field` | A field group names a column the model does not have |
+| `stale-key` / `stale-filter` | A grant references a key or filter no declaration mentions any more |
+| `misfiled-filter` | A grant applies one object's filter to another's key — it would filter on the wrong column |
+
 ## Status
 
-Tier 0 (declaration) is built and tested. Tier 1 (the catalogue tables and
-`permkit_sync`) is next, and is the blocker for the admin UI — nothing can
-compose from a registry that lives only in memory.
+Tier 0 (declaration) and tier 1 (the catalogue and `permkit_sync`) are built
+and tested. Tier 2 (composition through the catalogue) is next.
 
 No real domain is wired to it yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for
 the four tiers, what each phase delivers, and the deliberate non-goals.

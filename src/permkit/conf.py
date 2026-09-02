@@ -16,6 +16,11 @@ DEFAULTS: dict[str, Any] = {
     # accident of some `if user.is_superuser` scattered through the code.
     "SUPERUSER_BYPASS": True,
     "CONTEXT_BUILDER": None,
+    # Which per-app modules ``permkit_sync`` imports before scraping the
+    # registry.  None means the conventional list in
+    # ``permkit.catalogue.loading``; set it only if declarations live under
+    # names that list does not cover.
+    "DECLARATION_MODULES": None,
 }
 
 

@@ -5,8 +5,8 @@ Four tiers, built bottom-up. Each row says who writes it and where it lives.
 | Tier | Lives as | Written by | State |
 |---|---|---|---|
 | 0. Declaration | code, beside the component | developer | **done** |
-| 1. Catalogue | DB, synced from code | generated | **next** |
-| 2. Composition | DB, via Django admin | admin | not started |
+| 1. Catalogue | DB, synced from code | generated | **done** |
+| 2. Composition | DB, via Django admin | admin | **next** |
 | 3. Assignment | DB, via Django admin | end user | not started |
 
 Tier 1 is the blocker for everything above it: an admin UI cannot enumerate a
@@ -60,35 +60,47 @@ references, the scope point, and the action's mode.
 
 ---
 
-## Phase 2 — catalogue and sync ⬅ next
+## Phase 2 — catalogue and sync ✅
 
 ### Tables (`permkit/catalogue/models.py`)
 
 ```
 RegisteredObject      key, label, model_label
 RegisteredFilter      object, key, label, open_params, multi_valued
-RegisteredAction      key, label, mode, targets
+RegisteredAction      key, label, targets
 RegisteredFieldGroup  object, key, label, fields
-RegisteredScopePoint  object, action, target
+RegisteredScopePoint  object, action_key, target
 ```
 
 Every row carries `last_seen_at` and `is_live`.
 
+No `mode` on `RegisteredAction`: the key metadata it would have projected was
+dropped from the registry in phase 1, so the column would have had nothing to
+populate it.
+
 ### `permkit_sync`
 
-1. **Force-load every declaration module** before scraping — resolve the
-   URLconf, import service modules. Verified problem: after app startup the
-   dummy registry holds two actions, not three, because `services.py` is only
-   imported when something asks for it. A sync run today would publish an
-   incomplete catalogue and then mark a live action dead on the next run.
+1. **Force-load every declaration module** before scraping — walk the URLconf
+   to its leaves, and import the conventional module names in every installed
+   app. The URLconf alone is not enough: a service reached only from a Celery
+   task is invisible to it, and its actions would be published dead.
 2. **Upsert, never delete.** A row missing from this run gets `is_live=False`,
    so a composition referencing it keeps working while surfacing as broken.
-3. **Validate**, failing the build on:
-   - a composition referencing a filter, action or group no longer in code
-   - an object with filters but no scope point — those filters can never fire
-   - a field group naming a field the model does not have
+   A row that comes back is counted as *revived* rather than new — a nonzero
+   revived count on a normal deploy means the previous run scraped a thin
+   registry.
+3. **Validate**, failing the run on `filters-never-fire`, `unknown-field`,
+   `stale-key`, `stale-filter` and `misfiled-filter`. Validation runs *after*
+   the write: the dead row it just marked is what lets someone find the
+   configuration that broke, so rolling back on failure would delete the
+   evidence. `--check` runs the whole thing and rolls it back, for CI.
 
-### `permkit_coverage`
+Two things surface as warnings rather than failures, because neither breaks
+enforcement: an object key mentioned by a selector or serializer but never
+bound to a model (`unbound-object`), and a filter registered under no object
+(`unattached-filter`). `--strict` promotes them.
+
+### `permkit_coverage` ⬅ still outstanding
 
 Reports models read outside a registered scope point. Advisory, with CI failing
 against a committed baseline. The known example to keep honest:
@@ -97,14 +109,16 @@ nothing in the declaration layer would notice if a future edit dropped it.
 
 ### Tests
 
-- `@scoped` sites and actions are all present after a forced load
-- a filter whose object has no scope point fails sync
-- a composition referencing a removed filter is flagged, not silently dropped
-- re-running sync is idempotent
+`tests/test_catalogue_sync.py`, 21 of them: every declaration reaches the
+tables and carries what an admin needs to compose it; a forced load finds the
+scope points and actions; a filter whose object has no scope point fails sync;
+a composition referencing a removed filter is flagged rather than silently
+dropped; a removed declaration is retired and a returning one revived; and
+re-running sync creates, updates, revives and retires nothing.
 
 ---
 
-## Phase 3 — composition
+## Phase 3 — composition ⬅ next
 
 Today's grant tables become FK-backed and gain a grouping entity — the
 **abstract role**:

@@ -112,3 +112,15 @@ class RoleFieldGrant(models.Model):
 
     def __str__(self) -> str:
         return f"{self.role} → {self.grant.name}"
+
+
+# The catalogue tables live in their own module because they are a different
+# kind of thing — generated from code, never edited — but they belong to this
+# app, so they are imported here to be registered when Django loads models.
+from .catalogue.models import (  # noqa: E402,F401
+    RegisteredAction,
+    RegisteredFieldGroup,
+    RegisteredFilter,
+    RegisteredObject,
+    RegisteredScopePoint,
+)
