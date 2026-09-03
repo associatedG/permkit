@@ -218,8 +218,20 @@ transaction rolled back.
   invalidation scheme because nothing outlives the object it hangs on — a
   request builds one, the next starts clean. Measured on a DB-backed resolver:
   four role lookups for one list render became one. The **grant** side is
-  still uncached; every check hits the store, and caching that is where
-  revocation becomes a correctness problem rather than a performance one.
+  cached per *unit of work* — `grant_cache()`, applied to requests by
+  `GrantCacheMiddleware`. A ContextVar holds a dict that the scope swaps in and
+  out; there is no request id, and the same mechanism covers a Celery task.
+  Measured: a 100-row page went from 105 queries to 6, flat.
+
+  Nothing is cached outside a scope, deliberately — a ContextVar default would
+  be a process-global dict nothing ever clears, and a stale grant is a security
+  bug rather than a slow page. So a forgotten middleware costs queries and can
+  never cost correctness.
+
+  What is still open is caching *across* requests, which is the genuinely hard
+  half: grants change in the admin while the app runs, several workers hold
+  their own copies, and any window where one has not been told is a window
+  where somebody keeps access they no longer have.
 - **Audit trail.** Who changed which grant, when. Once non-developers can edit
   access this is a real gap; `pmso-service` already has an `audit` app to hook.
 - **Registry reset between tests.** The registry is process-wide and never

@@ -108,6 +108,32 @@ afresh and revocation needs no invalidation. A long-running process that
 changes somebody's role and keeps acting as them calls
 `permkit.clear_role_cache(user)`.
 
+## 3b. The grant cache (recommended)
+
+```python
+MIDDLEWARE = [
+    ...,
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "permkit.cache.GrantCacheMiddleware",   # after authentication
+]
+```
+
+Without it, a list view asks the database "what may this person see?" once per
+row — 100 rows is ~105 queries. With it, the answer is resolved once per
+request and the page is flat at ~6.
+
+It is safe to forget: nothing is cached outside a scope, so a missing
+middleware costs queries and can never serve a revoked grant. For a Celery task
+or a management command, open one by hand:
+
+```python
+from permkit import grant_cache
+
+with grant_cache():
+    for widget in queryset:
+        require_object(actor, "widget.update", widget)
+```
+
 ## 4. Admin URLs
 
 ```python

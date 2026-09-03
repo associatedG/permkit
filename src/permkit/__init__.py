@@ -36,6 +36,7 @@ from .declare import (
     object_permissions,
     permission_object,
 )
+from .cache import grant_cache
 from .registry import register_condition, register_key, registry
 
 default_app_config = "permkit.apps.PermkitConfig"
@@ -69,6 +70,7 @@ __all__ = [
     "assert_writable",
     "explain",
     "clear_role_cache",
+    "grant_cache",
     "get_policy",
 ]
 

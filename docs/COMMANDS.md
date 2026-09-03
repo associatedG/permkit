@@ -163,6 +163,11 @@ for rule in p.rules.select_related('object'):
 A superuser passes every check while `SUPERUSER_BYPASS` is on, so never debug
 with one — the answer is always yes and tells you nothing.
 
+If a *grant* lookup appears once per row, no grant-cache scope is open. Add
+`permkit.cache.GrantCacheMiddleware` after authentication, or wrap the work in
+`with permkit.grant_cache():`. Nothing is cached outside a scope, so this is a
+performance setting and never a correctness one.
+
 If you are counting queries and a role lookup appears more than once per
 request, the user object is being rebuilt between checks. Roles are cached per
 user *instance* (`CACHE_ROLES`, on by default); `permkit.clear_role_cache(user)`

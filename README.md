@@ -35,6 +35,12 @@ assert_writable(data, user=…, key=…)  # field write → raises
 ```python
 INSTALLED_APPS += ["permkit"]
 
+MIDDLEWARE += [
+    # Resolves each permission question once per request instead of once per
+    # row. Safe to omit — nothing is cached outside a scope.
+    "permkit.cache.GrantCacheMiddleware",
+]
+
 REST_FRAMEWORK = {
     # A view that declares no permission is closed, not public.
     "DEFAULT_PERMISSION_CLASSES": ["permkit.drf.DenyAll"],

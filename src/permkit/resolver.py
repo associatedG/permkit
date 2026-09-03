@@ -16,6 +16,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from django.db.models import Q, QuerySet
 
 from .base import Context, KeySpec
+from .cache import cached
 from .exceptions import ConfigurationError, PermissionDenied
 from .registry import Registry, registry as default_registry
 from .store import GrantStore
@@ -138,6 +139,29 @@ class Policy:
     def _spec(self, key: str) -> KeySpec:
         return self.registry.key(key)  # raises UnknownKey
 
+    # -- store access -----------------------------------------------------
+    #
+    # Routed through one place each so the grant cache covers every caller.
+    # Outside a ``grant_cache()`` scope these are plain pass-throughs.
+
+    def _endpoint_grant(self, roles: Sequence[str], key: str) -> bool:
+        return cached(
+            ("endpoint", tuple(roles), key),
+            lambda: self.store.has_endpoint_grant(roles, key),
+        )
+
+    def _object_grants(self, roles: Sequence[str], key: str):
+        return cached(
+            ("object", tuple(roles), key),
+            lambda: self.store.object_grants(roles, key),
+        )
+
+    def _field_grants(self, roles: Sequence[str], key: str):
+        return cached(
+            ("field", tuple(roles), key),
+            lambda: self.store.field_grants(roles, key),
+        )
+
     # -- endpoint tier ----------------------------------------------------
 
     def check_endpoint(self, user, key: str) -> bool:
@@ -145,7 +169,7 @@ class Policy:
         if self._is_superuser(user):
             return True
         roles = self.roles_for(user)
-        return bool(roles) and self.store.has_endpoint_grant(roles, key)
+        return bool(roles) and self._endpoint_grant(roles, key)
 
     def require(self, user, key: str) -> None:
         if not self.check_endpoint(user, key):
@@ -165,10 +189,10 @@ class Policy:
         # no endpoint grant would pass ``require_object`` — a caller reaching
         # the service layer directly (task, command, admin) would never have
         # had the endpoint tier checked for them.
-        if not roles or not self.store.has_endpoint_grant(roles, key):
+        if not roles or not self._endpoint_grant(roles, key):
             return ScopeResult(ScopeKind.DENY)
 
-        grants = self.store.object_grants(roles, key)
+        grants = self._object_grants(roles, key)
         if not grants:
             return ScopeResult(ScopeKind.DENY)
 
@@ -238,7 +262,7 @@ class Policy:
 
     def granted_fields(self, user, key: str) -> frozenset[str]:
         roles = self.roles_for(user)
-        grants = self.store.field_grants(roles, key) if roles else []
+        grants = self._field_grants(roles, key) if roles else []
         out: set[str] = set()
         for grant in grants:
             out |= grant.allowed_fields  # union: grants only ever reveal more
@@ -273,7 +297,7 @@ class Policy:
         restriction, which is the opposite of fail-closed.
         """
         roles = self.roles_for(user)
-        grants = self.store.field_grants(roles, key) if roles else []
+        grants = self._field_grants(roles, key) if roles else []
         out: dict[str, set] = {}
         for grant in grants:
             for field_name, values in grant.allowed_values.items():
@@ -376,13 +400,13 @@ class Policy:
             trace.allowed = False
             return trace
 
-        endpoint_ok = self.store.has_endpoint_grant(trace.roles, key)
+        endpoint_ok = self._endpoint_grant(trace.roles, key)
         trace.add(
             f"endpoint grant: {'found' if endpoint_ok else 'MISSING'} for {key}"
         )
 
         spec = self._spec(key)
-        grants = self.store.object_grants(trace.roles, key)
+        grants = self._object_grants(trace.roles, key)
         if not grants:
             trace.add("object grants: none → deny all rows")
         for grant in grants:

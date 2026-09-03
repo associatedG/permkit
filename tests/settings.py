@@ -29,6 +29,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # After authentication: the scope should cover the permission checks, and
+    # request.user must exist before any of them run.
+    "permkit.cache.GrantCacheMiddleware",
 ]
 
 TEMPLATES = [
