@@ -198,6 +198,7 @@ API they describe:
 | `permkit-init` | Wiring permkit into a project the first time |
 | `permkit-declare` | Adding declarations in the code layer |
 | `permkit-grant` | Composing permissions and roles, and asking "why?" |
+| `permkit-audit` | Reviewing a setup for gaps and dead configuration |
 
 Install by symlinking them into `~/.claude/skills/`.
 

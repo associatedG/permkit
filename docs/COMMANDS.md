@@ -120,6 +120,21 @@ anything else it asks the resolver user by user and says so.
 
 ---
 
+## Not a command: an audit
+
+There is no `permkit_audit`. Checking a setup for gaps is reading, reasoning
+and confirming against `explain()` — the `permkit-audit` skill covers it, and
+the two checks worth automating already have commands (`permkit_sync --check`
+and `permkit_roles`).
+
+The two findings worth knowing about, because neither surfaces as an error:
+
+- **A role reaches an endpoint but has no rule for it.** `scope()` returns DENY
+  with no object grants, so they pass the endpoint check and get an empty list.
+  It reads as "no data", not "no permission".
+- **A role has rules for a key it cannot reach.** `scope()` checks the endpoint
+  grant first and returns DENY without evaluating the rules at all.
+
 ## Not a command: the admin
 
 ```
