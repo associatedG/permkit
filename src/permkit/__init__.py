@@ -68,6 +68,7 @@ __all__ = [
     "strip_fields",
     "assert_writable",
     "explain",
+    "clear_role_cache",
     "get_policy",
 ]
 
@@ -109,6 +110,13 @@ def strip_fields(data: Mapping[str, Any], *, user, key: str) -> dict:
 def assert_writable(data: Mapping[str, Any], *, user, key: str) -> None:
     """Field tier (write). Raise if ``data`` touches a field they may not set."""
     get_policy().assert_writable(data, user=user, key=key)
+
+
+def clear_role_cache(user) -> None:
+    """Forget a user's cached roles. Only needed by long-running processes."""
+    from .resolver import clear_role_cache as _clear
+
+    _clear(user)
 
 
 def explain(user, key: str, obj=None):

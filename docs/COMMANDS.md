@@ -162,3 +162,8 @@ for rule in p.rules.select_related('object'):
 
 A superuser passes every check while `SUPERUSER_BYPASS` is on, so never debug
 with one — the answer is always yes and tells you nothing.
+
+If you are counting queries and a role lookup appears more than once per
+request, the user object is being rebuilt between checks. Roles are cached per
+user *instance* (`CACHE_ROLES`, on by default); `permkit.clear_role_cache(user)`
+forces a re-read for a long-running process that changed somebody's role.

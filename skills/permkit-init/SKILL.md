@@ -79,6 +79,11 @@ PERMKIT = {
     # A deliberate, visible switch rather than a scattered is_superuser check.
     "SUPERUSER_BYPASS": True,
 
+    # Resolve a user's roles once per user object rather than once per check.
+    # Free for the default resolver; the difference is a resolver that reads
+    # the database, where it turns a query per check into one per request.
+    "CACHE_ROLES": True,
+
     "CONTEXT_BUILDER": None,      # callable(user) -> permkit.Context
     "DECLARATION_MODULES": None,  # None = the conventional list; see below
 }
@@ -95,6 +100,13 @@ class ClaimRoleResolver:
         from permkit.models import normalize_role
         return [normalize_role(r) for r in getattr(user, "jwt_roles", []) or []]
 ```
+
+If a resolver reads the database, leave `CACHE_ROLES` on — permkit asks for
+roles on every check, and a list view asks again per row while stripping
+fields. The cache lives on the user *instance*, so a new request resolves
+afresh and revocation needs no invalidation. A long-running process that
+changes somebody's role and keeps acting as them calls
+`permkit.clear_role_cache(user)`.
 
 ## 4. Admin URLs
 

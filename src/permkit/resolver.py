@@ -21,6 +21,23 @@ from .registry import Registry, registry as default_registry
 from .store import GrantStore
 
 
+#: Where a user's resolved roles are remembered. On the instance, so the cache
+#: cannot outlive the object and there is nothing to invalidate.
+_ROLE_CACHE_ATTR = "_permkit_roles"
+
+
+def clear_role_cache(user) -> None:
+    """Forget a user's cached roles, for a process that keeps one around.
+
+    A web request never needs this. A long-running task that changes somebody's
+    role and then keeps acting as them does.
+    """
+    try:
+        user.__dict__.pop(_ROLE_CACHE_ATTR, None)
+    except AttributeError:
+        pass
+
+
 class ScopeKind(Enum):
     DENY = "deny"
     ALL = "all"
@@ -69,17 +86,51 @@ class Policy:
         registry: Registry | None = None,
         superuser_bypass: bool = True,
         context_builder=None,
+        cache_roles: bool = True,
     ) -> None:
         self.store = store
         self.principals = principals
         self.registry = registry or default_registry
         self.superuser_bypass = superuser_bypass
+        self.cache_roles = cache_roles
         self._context_builder = context_builder or (lambda user: Context(user=user))
 
     # -- helpers ----------------------------------------------------------
 
     def roles_for(self, user) -> list[str]:
-        return self.principals.roles_for(user)
+        """The acting user's roles, resolved once per user object.
+
+        Every tier asks this, and a list view asks it again for each row it
+        strips fields on — so with a resolver that reads the database (roles in
+        their own table, a profile, a claim) the same question was costing a
+        query per check.
+
+        The cache lives on the user *instance*, which is the honest scope: a
+        request builds one, a task builds one, and the next one starts clean.
+        That keeps revocation correct without an invalidation scheme — there is
+        nothing to invalidate, because nothing outlives the object it hangs on.
+        """
+        if not self.cache_roles or user is None:
+            return self.principals.roles_for(user)
+
+        # __dict__ rather than getattr/setattr: no descriptor is triggered, and
+        # an object that has no __dict__ (a __slots__ class) simply opts out
+        # instead of raising.
+        try:
+            store = user.__dict__
+        except AttributeError:
+            return self.principals.roles_for(user)
+
+        cached = store.get(_ROLE_CACHE_ATTR)
+        if cached is not None:
+            return cached
+
+        roles = self.principals.roles_for(user)
+        try:
+            store[_ROLE_CACHE_ATTR] = roles
+        except TypeError:  # a mappingproxy, e.g. a class rather than an instance
+            pass
+        return roles
 
     def _is_superuser(self, user) -> bool:
         return bool(self.superuser_bypass and getattr(user, "is_superuser", False))

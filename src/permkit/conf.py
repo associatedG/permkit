@@ -16,6 +16,11 @@ DEFAULTS: dict[str, Any] = {
     # accident of some `if user.is_superuser` scattered through the code.
     "SUPERUSER_BYPASS": True,
     "CONTEXT_BUILDER": None,
+    # Resolve a user's roles once per user object rather than once per check.
+    # Free for the default resolver (an attribute read); the difference is a
+    # resolver that reads the database, where it turns a query per check into
+    # one per request.
+    "CACHE_ROLES": True,
     # Which per-app modules ``permkit_sync`` imports before scraping the
     # registry.  None means the conventional list in
     # ``permkit.catalogue.loading``; set it only if declarations live under
@@ -46,6 +51,7 @@ def get_policy():
             store=store,
             principals=principals,
             superuser_bypass=get_setting("SUPERUSER_BYPASS"),
+            cache_roles=get_setting("CACHE_ROLES"),
             context_builder=import_string(builder) if builder else None,
         )
     return _policy

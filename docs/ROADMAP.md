@@ -213,9 +213,13 @@ transaction rolled back.
 
 ## Phase 5 — hardening
 
-- **Caching with invalidation.** There is none today; every check hits the
-  store. Revocation must take effect promptly, so this is correctness, not
-  performance.
+- **Caching with invalidation.** Half done. Role resolution is now cached on
+  the user *instance* (`CACHE_ROLES`, on by default), which needs no
+  invalidation scheme because nothing outlives the object it hangs on — a
+  request builds one, the next starts clean. Measured on a DB-backed resolver:
+  four role lookups for one list render became one. The **grant** side is
+  still uncached; every check hits the store, and caching that is where
+  revocation becomes a correctness problem rather than a performance one.
 - **Audit trail.** Who changed which grant, when. Once non-developers can edit
   access this is a real gap; `pmso-service` already has an `audit` app to hook.
 - **Registry reset between tests.** The registry is process-wide and never
