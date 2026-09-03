@@ -126,6 +126,41 @@ Finally it fails the run on the ways code and configuration drift apart:
 | `stale-key` / `stale-filter` | A grant references a key or filter no declaration mentions any more |
 | `misfiled-filter` | A grant applies one object's filter to another's key — it would filter on the wrong column |
 
+## Permissions as a file
+
+The admin is where permissions are composed. For environments with nobody
+sitting in front of them — a fresh database, CI, a deploy — a spec file is the
+same composition in a form you can review and re-run:
+
+```python
+PERMISSIONS = {
+    "widget-edit-assigned": {
+        "name": "Edit widgets assigned to me",
+        "endpoints": ["widget.update"],
+        "rules": [{
+            "key": "widget.update",
+            "label": "in my warehouse and assigned to me",
+            "conditions": [{"filter": "widget.warehouse"},
+                           {"filter": "widget.assigned"}],
+        }],
+    },
+}
+ROLES = {"w_keeper": {"label": "Warehouse keeper",
+                      "permissions": ["widget-edit-assigned"]}}
+```
+
+```bash
+python manage.py permkit_apply myapp/permissions/baseline.py
+python manage.py permkit_apply myapp/permissions/baseline.py --check   # CI
+```
+
+A permission the spec names is **fully managed** — delete a condition from the
+file and it goes from the database, or the file is a lie. Role bindings are
+**only ever added**, because a deploy must not revoke what somebody granted in
+the admin an hour ago. Permissions the spec does not name are untouched.
+
+`tests/dummy/permissions.py` is the worked example.
+
 ## Seeing it
 
 The dummy domain is runnable, so the admin can be opened against real rules:
@@ -134,7 +169,7 @@ The dummy domain is runnable, so the admin can be opened against real rules:
 export PERMKIT_DB=demo.sqlite3
 python manage.py migrate
 python manage.py permkit_sync          # publish the declarations
-python manage.py seed_dummy_roles --superuser   # compose them into roles
+python manage.py seed_dummy_roles --superuser   # apply the spec, add sample rows
 python manage.py runserver
 ```
 
@@ -147,10 +182,23 @@ there would be silently reverted by the next sync.
 permkit's superuser bypass means it passes every check regardless of what you
 compose — use the preview with `demo_keeper_1` to watch real rules resolve.
 
+## Claude Code skills
+
+`skills/` holds three skills for working with permkit, versioned alongside the
+API they describe:
+
+| Skill | For |
+|---|---|
+| `permkit-init` | Wiring permkit into a project the first time |
+| `permkit-declare` | Adding declarations in the code layer |
+| `permkit-grant` | Composing permissions and roles, and asking "why?" |
+
+Install by symlinking them into `~/.claude/skills/`.
+
 ## Status
 
 Tiers 0–4 are built and tested: declaration, the catalogue, composition,
-assignment and the admin. 205 tests, 3 skipped.
+assignment and the admin. 226 tests, 3 skipped.
 
 No real domain is wired to it yet — the whole suite runs against the synthetic
 `Widget` domain in `tests/dummy`, which is also what the demo above serves.

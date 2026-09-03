@@ -195,6 +195,22 @@ improvement and was not worth blocking the tier on.
 
 ---
 
+## Phase 4.5 — permissions as a file ✅
+
+`permkit_apply` reads a spec module (`PERMISSIONS` and `ROLES` dicts) and makes
+the database match it. Deploy order is `migrate` → `permkit_sync` →
+`permkit_apply`.
+
+The split that makes it safe to run unattended: a permission the spec names is
+fully managed, so removing a condition from the file removes it from the
+database; role bindings are only ever added, so a deploy cannot revoke what an
+administrator granted by hand. Nothing outside the spec is touched.
+
+It validates against the catalogue before writing anything, atomically — a
+missing filter, a retired endpoint, a filter belonging to another object, or
+params that do not match the declaration are all refused with the whole
+transaction rolled back.
+
 ## Phase 5 — hardening
 
 - **Caching with invalidation.** There is none today; every check hits the
