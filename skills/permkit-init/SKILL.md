@@ -128,7 +128,10 @@ And in CI:
 
 ```bash
 python manage.py permkit_sync --check   # fails if declarations drifted
+python manage.py permkit_roles          # fails on a role string matching no Role
 ```
+
+Every command is documented in `docs/COMMANDS.md` in the permkit repo.
 
 ## 6. Confirm it works
 

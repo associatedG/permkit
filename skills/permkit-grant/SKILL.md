@@ -215,6 +215,20 @@ for rule in p.rules.select_related('object'):
 "
 ```
 
+## Check the role strings line up
+
+A user's role reaches permkit as text, matched by name against the `Role`
+table. A typo there is the one silent failure left in the system — the user is
+granted nothing and looks exactly like someone deliberately given nothing.
+
+```bash
+python manage.py permkit_roles
+```
+
+Run it after changing roles, and in CI. It fails on a role string held by users
+that matches no `Role` row, and warns about roles nobody holds or that grant
+nothing.
+
 ## Do not
 
 - Write imperative one-off grant scripts. Write a spec.

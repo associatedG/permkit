@@ -202,6 +202,7 @@ assignment and the admin. 226 tests, 3 skipped.
 
 No real domain is wired to it yet — the whole suite runs against the synthetic
 `Widget` domain in `tests/dummy`, which is also what the demo above serves.
-See [docs/ROADMAP.md](docs/ROADMAP.md) for what each phase delivered, what is
+See [docs/COMMANDS.md](docs/COMMANDS.md) for every command and what it
+fails on, and [docs/ROADMAP.md](docs/ROADMAP.md) for what each phase delivered, what is
 still outstanding (`permkit_coverage`, caching with invalidation, an audit
 trail) and the deliberate non-goals.
