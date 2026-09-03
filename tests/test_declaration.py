@@ -62,7 +62,7 @@ def test_the_site_still_narrows(policy, grants, widgets, keeper_kho1):
 
 
 def test_read_and_write_sites_are_separate(policy, grants, widgets, keeper_kho1):
-    """Two sites on one object, two actions, two different row sets."""
+    """Two sites on one object, two endpoints, two different row sets."""
     readable = set(widget_list(fetched_by=keeper_kho1).values_list("name", flat=True))
     writable = set(widget_writable(fetched_by=keeper_kho1).values_list("name", flat=True))
 
@@ -76,9 +76,9 @@ def test_read_and_write_sites_are_separate(policy, grants, widgets, keeper_kho1)
 def test_a_filter_cannot_be_applied_to_another_object(
     policy, store, widgets, make_user
 ):
-    """The link between an action and its filters is the object key.
+    """The link between an endpoint and its filters is the object key.
 
-    Unchecked, a ``crate`` filter composed onto a ``widget`` action compiles
+    Unchecked, a ``crate`` filter composed onto a ``widget`` endpoint compiles
     happily and filters widgets on ``Widget.name`` — no error, plausible rows,
     silently wrong.
     """
@@ -135,15 +135,15 @@ def test_declared_labels_reach_the_catalogue(policy):
     assert "values" in registry.condition("widget.status_in").params
 
 
-def test_field_groups_and_actions_are_registered(policy):
+def test_field_groups_and_endpoints_are_registered(policy):
     assert registry.field_groups_for("widget")["money"].fields == ("secret_price",)
 
-    actions = registry.actions
-    assert actions["widget.view"].label == "List widgets"
-    assert actions["widget.update"].label == "Update a widget"
+    endpoints = registry.endpoints
+    assert endpoints["widget.view"].label == "List widgets"
+    assert endpoints["widget.update"].label == "Update a widget"
     # A create has no queryset to scope, but is still an endpoint someone
     # must be permitted to reach.
-    assert "widget.create" in actions
+    assert "widget.create" in endpoints
 
 
 # -- serializer-level declaration ---------------------------------------
@@ -246,25 +246,25 @@ def test_a_view_reading_the_model_directly_is_only_safe_via_the_mixin(policy):
     )
 
 
-def test_several_components_may_enforce_one_action(policy):
+def test_several_components_may_enforce_one_endpoint(policy):
     """A list and its detail are one permission, declared the one way.
 
     Both use ``@api_permission``; the first supplies the label, the rest register
-    as further places the action is enforced.
+    as further places the endpoint is enforced.
     """
     from .dummy.views import WidgetDetailApi, WidgetListApi
 
     assert WidgetListApi.permission_key == "widget.view"
     assert WidgetDetailApi.permission_key == "widget.view"
-    assert "widget.detail" not in registry.actions
+    assert "widget.detail" not in registry.endpoints
 
-    targets = registry.actions["widget.view"].targets
+    targets = registry.endpoints["widget.view"].targets
     assert len(targets) == 2
-    assert registry.actions["widget.view"].label == "List widgets"
+    assert registry.endpoints["widget.view"].label == "List widgets"
 
 
-def test_relabelling_an_action_is_rejected(policy):
-    """Two components disagreeing about what an action *is* is a config bug."""
+def test_relabelling_an_endpoint_is_rejected(policy):
+    """Two components disagreeing about what an endpoint *is* is a config bug."""
     from permkit import api_permission
     from permkit.exceptions import DuplicateRegistration
 
@@ -275,12 +275,12 @@ def test_relabelling_an_action_is_rejected(policy):
             pass
 
 
-def test_no_action_can_exist_without_something_enforcing_it(policy):
+def test_no_endpoint_can_exist_without_something_enforcing_it(policy):
     """The endpoint-tier twin of the scope-point check — made structural.
 
-    Because the only way to declare an action is to decorate the component
+    Because the only way to declare an endpoint is to decorate the component
     that enforces it, an entry an admin could grant while nothing honours it
     is unrepresentable rather than merely detectable.
     """
-    orphans = {key for key, spec in registry.actions.items() if not spec.targets}
-    assert not orphans, f"actions with no enforcing component: {orphans}"
+    orphans = {key for key, spec in registry.endpoints.items() if not spec.targets}
+    assert not orphans, f"endpoints with no enforcing component: {orphans}"

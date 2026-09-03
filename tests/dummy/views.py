@@ -50,7 +50,7 @@ class WidgetListApi(generics.ListAPIView):
 
 @api_permission("widget.view")
 class WidgetDetailApi(generics.RetrieveAPIView):
-    """R2 — the same action as the list.
+    """R2 — the same endpoint as the list.
 
     A list and its detail are one permission, so both name ``widget.view``.
     Because the queryset is the selector's, an out-of-scope row is a 404: the

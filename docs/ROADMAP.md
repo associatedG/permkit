@@ -25,12 +25,12 @@ permission_object("widget", model=Widget)        # filters.py
 @object_filter("widget", "warehouse")            # filters.py
 @object_permissions("widget", "view")            # selectors.py + apply_permissions()
 permission_fields = {"money": [...]}             # on the serializer
-@api_action("widget.view", label="…")            # views.py / services.py
+@api_permission("widget.view", label="…")        # views.py / services.py
 ```
 
 Keys are **assembled** from these, not declared: `registry.key("widget.update")`
 gathers the object's model, the serializer's field groups and governed
-references, the scope point, and the action's mode.
+references, the scope point, and the endpoint that enforces it.
 
 ### What changed from the original plan
 
@@ -41,7 +41,7 @@ references, the scope point, and the action's mode.
   raises if the body returns without applying.
 - `permission_object` was not in the plan. It carries the one fact no component
   declaration held: which model an object key stands for.
-- `@api_action` absorbed `permission_key`, so an action and its enforcement are
+- `@api_permission` absorbed `permission_key`, so an endpoint and its enforcement are
   one statement rather than two that can disagree.
 - Field groups moved onto the serializer class rather than a module-level call.
 - `perms.py` is gone entirely, not "largely".
@@ -50,7 +50,7 @@ references, the scope point, and the action's mode.
 
 - a site cannot return without applying its filters
 - a filter declared for one object cannot be composed onto another
-- an action cannot exist without a component enforcing it
+- an endpoint cannot exist without a component enforcing it
 - zero grants resolve to `DENY`, never an empty `Q` (which matches every row)
 - object rules compile to a `Q` and reach the SQL `WHERE` clause
 - domain invariants live in services, so no grant — superuser included — bypasses
@@ -67,14 +67,14 @@ references, the scope point, and the action's mode.
 ```
 RegisteredObject      key, label, model_label
 RegisteredFilter      object, key, label, open_params, multi_valued
-RegisteredAction      key, label, targets
+RegisteredEndpoint      key, label, targets
 RegisteredFieldGroup  object, key, label, fields
-RegisteredScopePoint  object, action_key, target
+RegisteredScopePoint  object, endpoint_key, target
 ```
 
 Every row carries `last_seen_at` and `is_live`.
 
-No `mode` on `RegisteredAction`: the key metadata it would have projected was
+No `mode` on `RegisteredEndpoint`: the key metadata it would have projected was
 dropped from the registry in phase 1, so the column would have had nothing to
 populate it.
 
@@ -83,7 +83,7 @@ populate it.
 1. **Force-load every declaration module** before scraping — walk the URLconf
    to its leaves, and import the conventional module names in every installed
    app. The URLconf alone is not enough: a service reached only from a Celery
-   task is invisible to it, and its actions would be published dead.
+   task is invisible to it, and its endpoints would be published dead.
 2. **Upsert, never delete.** A row missing from this run gets `is_live=False`,
    so a composition referencing it keeps working while surfacing as broken.
    A row that comes back is counted as *revived* rather than new — a nonzero
@@ -111,7 +111,7 @@ nothing in the declaration layer would notice if a future edit dropped it.
 
 `tests/test_catalogue_sync.py`, 21 of them: every declaration reaches the
 tables and carries what an admin needs to compose it; a forced load finds the
-scope points and actions; a filter whose object has no scope point fails sync;
+scope points and endpoints; a filter whose object has no scope point fails sync;
 a composition referencing a removed filter is flagged rather than silently
 dropped; a removed declaration is retired and a returning one revived; and
 re-running sync creates, updates, revives and retires nothing.
@@ -126,17 +126,17 @@ Today's grant tables become FK-backed and gain a grouping entity — the
 ```
 Role                     key, label, description                 # tier 3
 Permission               key, name, description
-PermissionAction         permission, action→RegisteredAction
-PermissionRule           permission, object, action_key, label, order
+PermissionEndpoint         permission, endpoint→RegisteredEndpoint
+PermissionRule           permission, object, endpoint_key, label, order
 PermissionRuleCondition  rule, filter→RegisteredFilter, params   # AND-ed
-PermissionFieldGrant     permission, field_group, action_key, allowed_values
+PermissionFieldGrant     permission, field_group, endpoint_key, allowed_values
 RolePermission           role→Role, permission                   # tier 3
 ```
 
 Two departures from the sketch, both forced by things the suite already
 proves:
 
-- **`PermissionFieldGrant` carries `action_key`, not a READ/WRITE mode.** The
+- **`PermissionFieldGrant` carries `endpoint_key`, not a READ/WRITE mode.** The
   keys are finer than that pair: `widget.update` and `widget.create` are both
   writes and are deliberately separate grants — being allowed to edit a price
   on an existing row is not being allowed to set one on a new row. A mode
@@ -170,7 +170,7 @@ Django admin has no native nested inlines, so `PermissionRule` gets its own page
 rather than adding a dependency.
 
 1. **Catalogue** — read-only; `is_live` and a "used by N permissions" count.
-2. **Permission** — inline actions and field grants; rules as a linked summary.
+2. **Permission** — inline endpoints and field grants; rules as a linked summary.
 3. **Rule** — condition inline whose filter dropdown is **limited to live
    filters for that object**, with params rendered from `open_params`. Reads as:
    *grant access when **any** rule matches; a rule matches when **all** its
@@ -206,7 +206,7 @@ improvement and was not worth blocking the tier on.
   reset, so a test that registers anything leaks into every later test.
   Partly mitigated: the catalogue tests build isolated `Registry` instances
   rather than touching the global one.
-- **Write-side coverage.** The scope-point check is sound for READ actions only;
+- **Write-side coverage.** The scope-point check is sound for READ endpoints only;
   most write enforcement is `require_object` per row, which the registry cannot
   see.
 

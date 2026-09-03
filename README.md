@@ -3,7 +3,7 @@
 Role-based authorization for Django across three tiers, configured in data.
 
 ```
-endpoint   may this role attempt this action at all
+endpoint   may this role attempt this at all
 object     which rows — compiled into the SQL WHERE clause
 field      which fields — read and write configured separately
 ```
@@ -50,7 +50,7 @@ catalogue tables by `permkit_sync`:
 
 - **objects** — what filters and field groups are about, bound to a model
 - **filters** — parameterised row rules whose only method is `as_q()`
-- **actions** — the endpoints a component enforces
+- **endpoints** — the operations a component enforces, one per key
 - **field groups** — named bundles of fields, declared on the serializer
 
 Composed as **data**, in the Django admin, entirely by foreign key into that
@@ -58,7 +58,7 @@ catalogue:
 
 ```
 Permission                a grantable bundle — the abstract role
-  PermissionAction        endpoints it may reach
+  PermissionEndpoint        endpoints it may reach
   PermissionRule          rows it may act on — several, OR-ed
     PermissionRuleCondition   narrowing within one rule — AND-ed
   PermissionFieldGrant    fields it may see or write

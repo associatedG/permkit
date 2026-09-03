@@ -1,6 +1,6 @@
 """permkit — role-based authorization for Django across three tiers.
 
-    endpoint  may this role attempt this action at all
+    endpoint  may this role attempt this at all
     object    which rows, compiled into the SQL WHERE clause
     field     which fields, read and write configured separately
 

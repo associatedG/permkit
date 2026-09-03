@@ -17,7 +17,7 @@ pytestmark = pytest.mark.django_db
 def test_unregistered_key_raises_in_the_core(policy, grants, admin_user):
     """A typo in config is a configuration bug, and must be loud.
 
-    The failure mode being avoided: ``config.get(resource, {}).get(action,
+    The failure mode being avoided: ``config.get(resource, {}).get(verb,
     False)``, where a misspelling is indistinguishable from a deliberate deny.
     """
     with pytest.raises(UnknownKey):
@@ -112,7 +112,7 @@ def test_superuser_bypass_is_explicit_and_switchable(
 def test_an_object_grant_without_an_endpoint_grant_denies(
     policy, store, make_user
 ):
-    """Not being allowed the action at all implies no rows to do it to.
+    """Not being allowed the endpoint at all implies no rows to do it to.
 
     A role configured with an object grant but no endpoint grant used to pass
     ``require_object`` — the endpoint tier is checked by DRF before the object

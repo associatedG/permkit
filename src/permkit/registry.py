@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Mapping
 
 from .base import (
-    ActionSpec,
+    EndpointSpec,
     ObjectSpec,
     ConditionSpec,
     FieldGroupSpec,
@@ -28,9 +28,9 @@ class Registry:
         self._objects: dict[str, ObjectSpec] = {}
         self._keys: dict[str, KeySpec] = {}
         self._conditions: dict[str, ConditionSpec] = {}
-        self._actions: dict[str, ActionSpec] = {}
+        self._endpoints: dict[str, EndpointSpec] = {}
         self._field_groups: dict[tuple[str, str], FieldGroupSpec] = {}
-        # A list per (object, action): several sites may legitimately scope the
+        # A list per (object, endpoint): several sites may legitimately scope the
         # same pair — a list view and an export, say.
         self._scope_points: dict[tuple[str, str], list[ScopePointSpec]] = {}
 
@@ -128,32 +128,32 @@ class Registry:
         return key in self._objects
 
 
-    def register_action(
+    def register_endpoint(
         self, key: str, *, label: str = "", target: str = ""
-    ) -> ActionSpec:
-        """Declare an action, or add another component that enforces it."""
-        existing = self._actions.get(key)
+    ) -> EndpointSpec:
+        """Declare an endpoint, or add another component that enforces it."""
+        existing = self._endpoints.get(key)
         if existing is None:
-            spec = ActionSpec(
+            spec = EndpointSpec(
                 key=key,
                 label=label or key,
                 targets=(target,) if target else (),
             )
-            self._actions[key] = spec
+            self._endpoints[key] = spec
             return spec
 
         if label and label != existing.label:
             raise DuplicateRegistration(
-                f"Action {key!r} is already labelled {existing.label!r}; "
+                f"Endpoint {key!r} is already labelled {existing.label!r}; "
                 f"cannot relabel to {label!r}."
             )
-        merged = ActionSpec(
+        merged = EndpointSpec(
             key=existing.key,
             label=existing.label,
             targets=tuple(dict.fromkeys((*existing.targets, target))) if target
             else existing.targets,
         )
-        self._actions[key] = merged
+        self._endpoints[key] = merged
         return merged
 
     def register_field_group(
@@ -182,12 +182,12 @@ class Registry:
         return spec
 
     def register_scope_point(
-        self, object_key: str, action_key: str, *, target: str = ""
+        self, object_key: str, endpoint_key: str, *, target: str = ""
     ) -> ScopePointSpec:
         spec = ScopePointSpec(
-            object_key=object_key, action_key=action_key, target=target
+            object_key=object_key, endpoint_key=endpoint_key, target=target
         )
-        self._scope_points.setdefault((object_key, action_key), []).append(spec)
+        self._scope_points.setdefault((object_key, endpoint_key), []).append(spec)
         return spec
 
     # -- lookup -----------------------------------------------------------
@@ -199,8 +199,8 @@ class Registry:
         ``widget.<anything>`` would resolve and a typo would silently become a
         valid key that nobody granted.
         """
-        known = set(self._keys) | set(self._actions)
-        known |= {f"{obj}.{action}" for obj, action in self._scope_points}
+        known = set(self._keys) | set(self._endpoints)
+        known |= {f"{obj}.{verb}" for obj, verb in self._scope_points}
         for spec in self._objects.values():
             # A key named only as a governed reference is still a real key.
             known |= set(spec.references.values())
@@ -218,9 +218,9 @@ class Registry:
         if id in self._keys:
             return self._keys[id]
 
-        object_key, _, action = id.rpartition(".")
+        object_key, _, verb = id.rpartition(".")
         obj = self._objects.get(object_key)
-        if obj is None or not action or id not in self.known_keys():
+        if obj is None or not verb or id not in self.known_keys():
             raise UnknownKey(id)
 
         fields = frozenset(
@@ -261,8 +261,8 @@ class Registry:
         return dict(self._conditions)
 
     @property
-    def actions(self) -> dict[str, ActionSpec]:
-        return dict(self._actions)
+    def endpoints(self) -> dict[str, EndpointSpec]:
+        return dict(self._endpoints)
 
     @property
     def field_groups(self) -> dict[tuple[str, str], FieldGroupSpec]:
@@ -304,7 +304,7 @@ class Registry:
         self._objects.clear()
         self._keys.clear()
         self._conditions.clear()
-        self._actions.clear()
+        self._endpoints.clear()
         self._field_groups.clear()
         self._scope_points.clear()
 

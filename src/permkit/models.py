@@ -7,7 +7,7 @@ projection of code and are rewritten by ``permkit_sync`` on every deploy.
 The shape is one grouping entity and its parts:
 
     Permission                what a job needs, as one grantable thing
-      PermissionAction        endpoints it may reach
+      PermissionEndpoint        endpoints it may reach
       PermissionRule          rows it may act on — several, OR-ed
         PermissionRuleCondition   narrowing within one rule — AND-ed
       PermissionFieldGrant    fields it may see or write
@@ -36,7 +36,7 @@ from django.db import models
 # ``RegisteredScopePoint`` has no foreign key pointing at it and is imported
 # for that reason alone.
 from .catalogue.models import (  # noqa: F401
-    RegisteredAction,
+    RegisteredEndpoint,
     RegisteredFieldGroup,
     RegisteredFilter,
     RegisteredObject,
@@ -119,26 +119,26 @@ class Permission(models.Model):
         return self.name or self.key
 
 
-class PermissionAction(models.Model):
+class PermissionEndpoint(models.Model):
     """An endpoint this permission may reach. The endpoint tier needs no payload."""
 
     permission = models.ForeignKey(
-        Permission, on_delete=models.CASCADE, related_name="actions"
+        Permission, on_delete=models.CASCADE, related_name="endpoints"
     )
-    action = models.ForeignKey(
-        RegisteredAction, on_delete=models.PROTECT, related_name="granted_by"
+    endpoint = models.ForeignKey(
+        RegisteredEndpoint, on_delete=models.PROTECT, related_name="granted_by"
     )
 
     class Meta:
-        ordering = ("action__key",)
+        ordering = ("endpoint__key",)
         constraints = [
             models.UniqueConstraint(
-                fields=("permission", "action"), name="permkit_unique_permission_action"
+                fields=("permission", "endpoint"), name="permkit_unique_permission_endpoint"
             )
         ]
 
     def __str__(self) -> str:
-        return f"{self.permission.key} → {self.action.key}"
+        return f"{self.permission.key} → {self.endpoint.key}"
 
 
 class PermissionRule(models.Model):
@@ -157,10 +157,10 @@ class PermissionRule(models.Model):
     object = models.ForeignKey(
         RegisteredObject, on_delete=models.PROTECT, related_name="rules"
     )
-    #: The action half of the key — ``"view"``, ``"update"``. Read and write
+    #: The verb half of the key — ``"view"``, ``"update"``. Read and write
     #: are different keys carrying different rules, so the rows someone may
     #: see and the rows they may edit are configured independently.
-    action_key = models.CharField(max_length=100)
+    endpoint_key = models.CharField(max_length=100)
     label = models.CharField(
         max_length=200,
         blank=True,
@@ -173,7 +173,7 @@ class PermissionRule(models.Model):
 
     @property
     def key(self) -> str:
-        return f"{self.object.key}.{self.action_key}"
+        return f"{self.object.key}.{self.endpoint_key}"
 
     @property
     def name(self) -> str:
@@ -243,7 +243,7 @@ class PermissionRuleCondition(models.Model):
 class PermissionFieldGrant(models.Model):
     """A field group this permission may see or write, for one key.
 
-    Carries an ``action_key`` rather than a READ/WRITE mode, because the keys
+    Carries an ``endpoint_key`` rather than a READ/WRITE mode, because the keys
     are finer than that pair: ``widget.update`` and ``widget.create`` are both
     writes and are deliberately separate grants — being allowed to edit a
     price on an existing row does not mean being allowed to set one on a new
@@ -256,24 +256,24 @@ class PermissionFieldGrant(models.Model):
     field_group = models.ForeignKey(
         RegisteredFieldGroup, on_delete=models.PROTECT, related_name="granted_by"
     )
-    action_key = models.CharField(max_length=100)
+    endpoint_key = models.CharField(max_length=100)
     #: ``{"status": ["DRAFT", "ACTIVE"]}`` — permitted values for a field.
     #: A grant that allows the field without constraining it here does NOT
     #: lift another grant's constraint: silence is not "any value".
     allowed_values = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        ordering = ("field_group__object__key", "action_key", "field_group__key")
+        ordering = ("field_group__object__key", "endpoint_key", "field_group__key")
         constraints = [
             models.UniqueConstraint(
-                fields=("permission", "field_group", "action_key"),
+                fields=("permission", "field_group", "endpoint_key"),
                 name="permkit_unique_permission_field_grant",
             )
         ]
 
     @property
     def key(self) -> str:
-        return f"{self.field_group.object.key}.{self.action_key}"
+        return f"{self.field_group.object.key}.{self.endpoint_key}"
 
     def __str__(self) -> str:
         return f"{self.key}: {self.field_group.key}"

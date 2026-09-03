@@ -89,7 +89,7 @@ class ConditionSpec:
     multi_valued: bool = False
     #: Which object this filter is about.  Checked against the key's resource
     #: before the filter is applied: without it, a ``crate`` filter composed
-    #: onto a ``widget`` action compiles happily and silently filters widgets
+    #: onto a ``widget`` endpoint compiles happily and silently filters widgets
     #: on the wrong column.
     object_key: str | None = None
 
@@ -124,12 +124,12 @@ class ObjectSpec:
 
 
 @dataclass(frozen=True)
-class ActionSpec:
-    """An endpoint action, declared by ``@api_permission``.
+class EndpointSpec:
+    """An endpoint, declared by ``@api_permission``.
 
-    Several components may enforce the same action — a list view and a detail
-    view are usually one permission — so an action carries every place that
-    enforces it rather than a single owner.  An action with no target cannot
+    Several components may enforce the same endpoint — a list view and a detail
+    view are usually one permission — so an endpoint carries every place that
+    enforces it rather than a single owner.  An endpoint with no target cannot
     exist, which is what makes a catalogue entry nobody honours unrepresentable
     rather than merely detectable.
     """
@@ -164,13 +164,13 @@ class ScopePointSpec:
     """
 
     object_key: str
-    action_key: str
+    endpoint_key: str
     target: str = ""
 
 
 @dataclass(frozen=True)
 class KeySpec:
-    """One (resource, action) pair — the unit of "what are you trying to do".
+    """One (resource, verb) pair — the unit of "what are you trying to do".
 
     Read and write are separated by *key*, not by an attribute here:
     ``order.view`` and ``order.update`` are distinct keys carrying distinct

@@ -15,7 +15,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from permkit.catalogue.models import (
-    RegisteredAction,
+    RegisteredEndpoint,
     RegisteredFieldGroup,
     RegisteredFilter,
     RegisteredObject,
@@ -23,7 +23,7 @@ from permkit.catalogue.models import (
 from permkit.catalogue.sync import sync_catalogue
 from permkit.models import (
     Permission,
-    PermissionAction,
+    PermissionEndpoint,
     PermissionFieldGrant,
     PermissionRule,
     PermissionRuleCondition,
@@ -151,11 +151,11 @@ class Command(BaseCommand):
             out[key] = permission
         return out
 
-    def _rule(self, permission, object_key, action_key, *, label, filters=()):
+    def _rule(self, permission, object_key, endpoint_key, *, label, filters=()):
         rule, _ = PermissionRule.objects.get_or_create(
             permission=permission,
             object=RegisteredObject.objects.get(key=object_key),
-            action_key=action_key,
+            endpoint_key=endpoint_key,
             defaults={"label": label, "order": 0},
         )
         for order, filter_key in enumerate(filters):
@@ -166,27 +166,27 @@ class Command(BaseCommand):
             )
         return rule
 
-    def _action(self, permission, key):
-        PermissionAction.objects.get_or_create(
-            permission=permission, action=RegisteredAction.objects.get(key=key)
+    def _endpoint(self, permission, key):
+        PermissionEndpoint.objects.get_or_create(
+            permission=permission, endpoint=RegisteredEndpoint.objects.get(key=key)
         )
 
-    def _field(self, permission, object_key, group_key, action_key):
+    def _field(self, permission, object_key, group_key, endpoint_key):
         PermissionFieldGrant.objects.get_or_create(
             permission=permission,
             field_group=RegisteredFieldGroup.objects.get(
                 object__key=object_key, key=group_key
             ),
-            action_key=action_key,
+            endpoint_key=endpoint_key,
         )
 
     def _compose(self, p: dict[str, Permission]) -> None:
-        self._action(p["widget-browse-all"], "widget.view")
+        self._endpoint(p["widget-browse-all"], "widget.view")
         self._rule(
             p["widget-browse-all"], "widget", "view", label="every row"
         )
 
-        self._action(p["widget-browse-own-warehouse"], "widget.view")
+        self._endpoint(p["widget-browse-own-warehouse"], "widget.view")
         self._rule(
             p["widget-browse-own-warehouse"],
             "widget",
@@ -195,10 +195,10 @@ class Command(BaseCommand):
             filters=["widget.warehouse"],
         )
 
-        self._action(p["widget-edit-all"], "widget.update")
+        self._endpoint(p["widget-edit-all"], "widget.update")
         self._rule(p["widget-edit-all"], "widget", "update", label="every row")
 
-        self._action(p["widget-edit-assigned"], "widget.update")
+        self._endpoint(p["widget-edit-assigned"], "widget.update")
         # Two conditions on ONE rule, so they intersect: in my warehouse AND
         # assigned to me. Two rules would have unioned them, which is a much
         # wider grant and the easiest mistake to make in this model.
@@ -213,9 +213,9 @@ class Command(BaseCommand):
         self._field(p["widget-see-prices"], "widget", "money", "view")
         self._field(p["widget-set-prices"], "widget", "money", "update")
 
-        self._action(p["widget-create"], "widget.create")
+        self._endpoint(p["widget-create"], "widget.create")
 
-        self._action(p["crate-browse"], "crate.view")
+        self._endpoint(p["crate-browse"], "crate.view")
         self._rule(p["crate-browse"], "crate", "view", label="every crate")
 
     def _assign(self, permissions: dict[str, Permission]) -> None:

@@ -22,7 +22,7 @@ from django.utils import timezone
 from permkit.base import ObjectCondition
 from permkit.catalogue.loading import load_declarations
 from permkit.catalogue.models import (
-    RegisteredAction,
+    RegisteredEndpoint,
     RegisteredFieldGroup,
     RegisteredFilter,
     RegisteredObject,
@@ -31,7 +31,7 @@ from permkit.catalogue.models import (
 from permkit.catalogue.sync import sync_catalogue, validate
 from permkit.models import (
     Permission,
-    PermissionAction,
+    PermissionEndpoint,
     PermissionFieldGrant,
     PermissionRule,
     PermissionRuleCondition,
@@ -62,7 +62,7 @@ def make_registry(*, scope_point: bool = True, fields=("secret_price",)) -> Regi
     reg.register_object("gadget", model=Widget, label="Gadgets")
     reg.register_condition("gadget.anything", object_key="gadget")(_Anything)
     reg.register_field_group("gadget", "money", fields=fields)
-    reg.register_action("gadget.view", label="List gadgets", target="somewhere.View")
+    reg.register_endpoint("gadget.view", label="List gadgets", target="somewhere.View")
     if scope_point:
         reg.register_scope_point("gadget", "view", target="somewhere.gadget_list")
     return reg
@@ -70,12 +70,12 @@ def make_registry(*, scope_point: bool = True, fields=("secret_price",)) -> Regi
 
 def compose(key: str, *filter_keys: str, name: str = "composed") -> PermissionRule:
     """A permission holding one rule, for the composition-drift tests."""
-    object_key, _, action_key = key.rpartition(".")
+    object_key, _, endpoint_key = key.rpartition(".")
     permission = Permission.objects.create(key=name, name=name)
     rule = PermissionRule.objects.create(
         permission=permission,
         object=RegisteredObject.objects.get(key=object_key),
-        action_key=action_key,
+        endpoint_key=endpoint_key,
     )
     for order, filter_key in enumerate(filter_keys):
         PermissionRuleCondition.objects.create(
@@ -94,8 +94,8 @@ def test_sync_publishes_every_declaration_the_registry_holds():
     assert set(RegisteredObject.objects.values_list("key", flat=True)) == set(
         live_registry.objects
     )
-    assert set(RegisteredAction.objects.values_list("key", flat=True)) == set(
-        live_registry.actions
+    assert set(RegisteredEndpoint.objects.values_list("key", flat=True)) == set(
+        live_registry.endpoints
     )
     assert set(RegisteredFilter.objects.values_list("key", flat=True)) == set(
         live_registry.conditions
@@ -124,10 +124,10 @@ def test_a_filter_carries_what_an_admin_needs_to_compose_it():
     ).multi_valued is True
 
 
-def test_an_action_records_every_component_that_enforces_it():
+def test_an_endpoint_records_every_component_that_enforces_it():
     sync_catalogue()
 
-    row = RegisteredAction.objects.get(key="widget.view")
+    row = RegisteredEndpoint.objects.get(key="widget.view")
     assert sorted(row.targets) == [
         "tests.dummy.views.WidgetDetailApi",
         "tests.dummy.views.WidgetListApi",
@@ -246,15 +246,15 @@ def test_a_composition_referencing_a_retired_filter_is_flagged():
     assert "stale-filter" in [p.code for p in validate()]
 
 
-def test_a_composition_granting_a_retired_action_is_flagged():
+def test_a_composition_granting_a_retired_endpoint_is_flagged():
     sync_catalogue()
     permission = Permission.objects.create(key="p", name="p")
-    dead = RegisteredAction.objects.create(
+    dead = RegisteredEndpoint.objects.create(
         key="widget.approve", label="Approve", last_seen_at=timezone.now(), is_live=False
     )
-    PermissionAction.objects.create(permission=permission, action=dead)
+    PermissionEndpoint.objects.create(permission=permission, endpoint=dead)
 
-    assert "stale-action" in [p.code for p in validate()]
+    assert "stale-endpoint" in [p.code for p in validate()]
 
 
 def test_a_rule_for_a_key_no_declaration_mentions_is_flagged():
@@ -312,7 +312,7 @@ def test_a_field_grant_on_a_retired_group_is_flagged():
     PermissionFieldGrant.objects.create(
         permission=Permission.objects.create(key="p", name="p"),
         field_group=RegisteredFieldGroup.objects.get(key="money"),
-        action_key="view",
+        endpoint_key="view",
     )
     RegisteredFieldGroup.objects.filter(key="money").update(is_live=False)
 
@@ -327,7 +327,7 @@ def test_the_loader_reaches_declarations_no_url_resolves():
 
     ``services.py`` is the case that matters: reachable from a view today,
     but a service called only from a Celery task would be invisible to a
-    URLconf walk, and its actions would be published dead.
+    URLconf walk, and its endpoints would be published dead.
     """
     report = load_declarations()
 
@@ -336,10 +336,10 @@ def test_the_loader_reaches_declarations_no_url_resolves():
     assert report.urlconf_resolved
 
 
-def test_every_declared_scope_point_and_action_survives_a_forced_load():
+def test_every_declared_scope_point_and_endpoint_survives_a_forced_load():
     load_declarations()
 
-    assert set(live_registry.actions) >= {
+    assert set(live_registry.endpoints) >= {
         "widget.view",
         "widget.update",
         "widget.create",

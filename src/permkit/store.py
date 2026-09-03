@@ -12,7 +12,7 @@ from typing import Iterable, Mapping, Protocol, Sequence, runtime_checkable
 
 from .models import (
     Permission,
-    PermissionAction,
+    PermissionEndpoint,
     PermissionFieldGrant,
     PermissionRule,
     PermissionRuleCondition,
@@ -71,19 +71,19 @@ class DatabaseStore:
     def has_endpoint_grant(self, roles: Sequence[str], key: str) -> bool:
         if not roles:
             return False
-        return PermissionAction.objects.filter(
-            permission__role_bindings__role__key__in=roles, action__key=key
+        return PermissionEndpoint.objects.filter(
+            permission__role_bindings__role__key__in=roles, endpoint__key=key
         ).exists()
 
     def object_grants(self, roles: Sequence[str], key: str) -> list[ObjectGrantData]:
         if not roles:
             return []
-        object_key, _, action_key = key.rpartition(".")
+        object_key, _, endpoint_key = key.rpartition(".")
         rules = (
             PermissionRule.objects.filter(
                 permission__role_bindings__role__key__in=roles,
                 object__key=object_key,
-                action_key=action_key,
+                endpoint_key=endpoint_key,
             )
             .select_related("permission", "object")
             .prefetch_related("conditions__filter")
@@ -103,12 +103,12 @@ class DatabaseStore:
     def field_grants(self, roles: Sequence[str], key: str) -> list[FieldGrantData]:
         if not roles:
             return []
-        object_key, _, action_key = key.rpartition(".")
+        object_key, _, endpoint_key = key.rpartition(".")
         grants = (
             PermissionFieldGrant.objects.filter(
                 permission__role_bindings__role__key__in=roles,
                 field_group__object__key=object_key,
-                action_key=action_key,
+                endpoint_key=endpoint_key,
             )
             .select_related("permission", "field_group")
             .distinct()
@@ -215,7 +215,7 @@ def seed_database_from(store: MemoryStore, *, prefix: str = "seeded") -> None:
     request time.
     """
     from .catalogue.models import (
-        RegisteredAction,
+        RegisteredEndpoint,
         RegisteredFieldGroup,
         RegisteredFilter,
         RegisteredObject,
@@ -233,18 +233,18 @@ def seed_database_from(store: MemoryStore, *, prefix: str = "seeded") -> None:
         return permission
 
     for role_key, key in sorted(store._endpoint):
-        PermissionAction.objects.get_or_create(
+        PermissionEndpoint.objects.get_or_create(
             permission=permission_for(role_key),
-            action=RegisteredAction.objects.get(key=key),
+            endpoint=RegisteredEndpoint.objects.get(key=key),
         )
 
     for role_key, data in store._object:
-        object_key, _, action_key = data.key.rpartition(".")
+        object_key, _, endpoint_key = data.key.rpartition(".")
         permission = permission_for(role_key)
         rule, _ = PermissionRule.objects.get_or_create(
             permission=permission,
             object=RegisteredObject.objects.get(key=object_key),
-            action_key=action_key,
+            endpoint_key=endpoint_key,
             label=data.name,
             defaults={"order": permission.rules.count()},
         )
@@ -256,7 +256,7 @@ def seed_database_from(store: MemoryStore, *, prefix: str = "seeded") -> None:
             )
 
     for role_key, data in store._field:
-        object_key, _, action_key = data.key.rpartition(".")
+        object_key, _, endpoint_key = data.key.rpartition(".")
         # A fixture lists fields; the catalogue grants groups. Every group
         # wholly contained in the fixture's allow-list is granted — a group
         # only partly listed is not, because granting it would hand out a
@@ -268,7 +268,7 @@ def seed_database_from(store: MemoryStore, *, prefix: str = "seeded") -> None:
             PermissionFieldGrant.objects.get_or_create(
                 permission=permission_for(role_key),
                 field_group=group,
-                action_key=action_key,
+                endpoint_key=endpoint_key,
                 defaults={
                     "allowed_values": {
                         f: sorted(v)

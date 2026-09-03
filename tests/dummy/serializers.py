@@ -48,11 +48,11 @@ class WidgetCreateSerializer(WidgetSerializer):
 
     Creation is a different key from update, so it carries different field
     grants — an admin who may edit prices on an existing row has not thereby
-    been granted the right to set one on a new row.  Only ``write_action``
+    been granted the right to set one on a new row.  Only ``write_endpoint``
     changes; the mixin derives the key from it.
     """
 
-    write_action = "create"
+    write_endpoint = "create"
 
 
 class CrateSerializer(serializers.ModelSerializer):

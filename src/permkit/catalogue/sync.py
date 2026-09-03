@@ -28,7 +28,7 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from ..models import (
-    PermissionAction,
+    PermissionEndpoint,
     PermissionFieldGrant,
     PermissionRule,
     PermissionRuleCondition,
@@ -36,7 +36,7 @@ from ..models import (
 from ..registry import Registry, registry as default_registry
 from .loading import LoadReport, load_declarations
 from .models import (
-    RegisteredAction,
+    RegisteredEndpoint,
     RegisteredFieldGroup,
     RegisteredFilter,
     RegisteredObject,
@@ -259,10 +259,10 @@ def _filter_rows(registry: Registry, objects: dict[str, RegisteredObject]) -> li
     return rows
 
 
-def _action_rows(registry: Registry) -> list[dict]:
+def _endpoint_rows(registry: Registry) -> list[dict]:
     return [
         {"key": spec.key, "label": spec.label, "targets": list(spec.targets)}
-        for spec in registry.actions.values()
+        for spec in registry.endpoints.values()
     ]
 
 
@@ -286,9 +286,9 @@ def _scope_point_rows(
     return [
         {
             "object": objects[spec.object_key],
-            "action_key": spec.action_key,
+            "endpoint_key": spec.endpoint_key,
             "target": spec.target,
-            "label": f"{spec.object_key}.{spec.action_key}",
+            "label": f"{spec.object_key}.{spec.endpoint_key}",
         }
         for specs in registry.scope_points.values()
         for spec in specs
@@ -395,15 +395,15 @@ def _validate_compositions(registry: Registry) -> list[Problem]:
     problems: list[Problem] = []
     known = registry.known_keys()
 
-    dead_actions = PermissionAction.objects.filter(
-        action__is_live=False
-    ).select_related("permission", "action")
-    for entry in dead_actions:
+    dead_endpoints = PermissionEndpoint.objects.filter(
+        endpoint__is_live=False
+    ).select_related("permission", "endpoint")
+    for entry in dead_endpoints:
         problems.append(
             Problem(
-                "stale-action",
-                f"Permission {entry.permission.key!r} grants action "
-                f"{entry.action.key!r}, which no component declares any more. "
+                "stale-endpoint",
+                f"Permission {entry.permission.key!r} grants endpoint "
+                f"{entry.endpoint.key!r}, which no component declares any more. "
                 f"Nobody can exercise it.",
             )
         )
@@ -516,7 +516,7 @@ def sync_catalogue(
     report.tables.append(objects_report)
 
     for model, rows, natural, name in (
-        (RegisteredAction, _action_rows(registry), ("key",), "actions"),
+        (RegisteredEndpoint, _endpoint_rows(registry), ("key",), "endpoints"),
         (RegisteredFilter, _filter_rows(registry, objects), ("key",), "filters"),
         (
             RegisteredFieldGroup,
@@ -527,7 +527,7 @@ def sync_catalogue(
         (
             RegisteredScopePoint,
             _scope_point_rows(registry, objects),
-            ("object", "action_key", "target"),
+            ("object", "endpoint_key", "target"),
             "scope points",
         ),
     ):

@@ -19,7 +19,7 @@ class PermKitError(Exception):
 
 
 class PermissionDenied(PermKitError):
-    """The principal is not permitted to perform this action."""
+    """The principal is not permitted to do this."""
 
     def __init__(self, key: str, detail: str = ""):
         self.key = key

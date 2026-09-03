@@ -47,7 +47,7 @@ def rule(catalogue) -> PermissionRule:
     return PermissionRule.objects.create(
         permission=Permission.objects.create(key="p", name="Composed"),
         object=RegisteredObject.objects.get(key="widget"),
-        action_key="view",
+        endpoint_key="view",
     )
 
 
@@ -73,7 +73,7 @@ def test_catalogue_pages_are_read_only(staff, catalogue, client):
     [
         "admin:permkit_registeredobject_changelist",
         "admin:permkit_registeredfilter_changelist",
-        "admin:permkit_registeredaction_changelist",
+        "admin:permkit_registeredendpoint_changelist",
         "admin:permkit_registeredfieldgroup_changelist",
         "admin:permkit_registeredscopepoint_changelist",
         "admin:permkit_permission_changelist",

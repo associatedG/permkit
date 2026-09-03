@@ -22,7 +22,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 from .catalogue.models import (
-    RegisteredAction,
+    RegisteredEndpoint,
     RegisteredFieldGroup,
     RegisteredFilter,
     RegisteredObject,
@@ -30,7 +30,7 @@ from .catalogue.models import (
 )
 from .models import (
     Permission,
-    PermissionAction,
+    PermissionEndpoint,
     PermissionFieldGrant,
     PermissionRule,
     PermissionRuleCondition,
@@ -110,8 +110,8 @@ class RegisteredFilterAdmin(ReadOnlyAdmin):
         return obj._used
 
 
-@admin.register(RegisteredAction)
-class RegisteredActionAdmin(ReadOnlyAdmin):
+@admin.register(RegisteredEndpoint)
+class RegisteredEndpointAdmin(ReadOnlyAdmin):
     list_display = ("key", "label", "enforced_by", _liveness, "usage", "last_seen_at")
     list_filter = ("is_live",)
     search_fields = ("key", "label")
@@ -160,15 +160,15 @@ class RegisteredScopePointAdmin(ReadOnlyAdmin):
 # -- tier 2: composition --------------------------------------------------
 
 
-class PermissionActionInline(admin.TabularInline):
-    model = PermissionAction
+class PermissionEndpointInline(admin.TabularInline):
+    model = PermissionEndpoint
     extra = 1
-    autocomplete_fields = ("action",)
+    autocomplete_fields = ("endpoint",)
     verbose_name_plural = "Endpoints this permission may reach"
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "action":
-            kwargs["queryset"] = RegisteredAction.objects.filter(is_live=True)
+        if db_field.name == "endpoint":
+            kwargs["queryset"] = RegisteredEndpoint.objects.filter(is_live=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -187,9 +187,9 @@ class PermissionFieldGrantInline(admin.TabularInline):
 
 @admin.register(Permission)
 class PermissionAdmin(admin.ModelAdmin):
-    list_display = ("key", "name", "action_count", "rule_count", "field_count", "held_by")
+    list_display = ("key", "name", "endpoint_count", "rule_count", "field_count", "held_by")
     search_fields = ("key", "name", "description")
-    inlines = [PermissionActionInline, PermissionFieldGrantInline]
+    inlines = [PermissionEndpointInline, PermissionFieldGrantInline]
     readonly_fields = ("rules_summary",)
     fields = ("key", "name", "description", "rules_summary")
 
@@ -198,16 +198,16 @@ class PermissionAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(
-                _actions=Count("actions", distinct=True),
+                _endpoints=Count("endpoints", distinct=True),
                 _rules=Count("rules", distinct=True),
                 _fields=Count("field_grants", distinct=True),
                 _roles=Count("role_bindings", distinct=True),
             )
         )
 
-    @admin.display(description="endpoints", ordering="_actions")
-    def action_count(self, obj) -> int:
-        return obj._actions
+    @admin.display(description="endpoints", ordering="_endpoints")
+    def endpoint_count(self, obj) -> int:
+        return obj._endpoints
 
     @admin.display(description="row rules", ordering="_rules")
     def rule_count(self, obj) -> int:
@@ -286,13 +286,13 @@ class PermissionRuleConditionInline(admin.TabularInline):
 @admin.register(PermissionRule)
 class PermissionRuleAdmin(admin.ModelAdmin):
     list_display = ("__str__", "permission", "key", "condition_count", "order")
-    list_filter = ("object", "action_key", "permission")
+    list_filter = ("object", "endpoint_key", "permission")
     inlines = [PermissionRuleConditionInline]
     readonly_fields = ("filter_reference",)
     fields = (
         "permission",
         "object",
-        "action_key",
+        "endpoint_key",
         "label",
         "order",
         "filter_reference",

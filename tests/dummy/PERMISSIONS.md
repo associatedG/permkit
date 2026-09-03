@@ -25,10 +25,10 @@ write can carry a **reference to another object**.
 | `filters.py` | `permission_object` for widget and crate; every `@object_condition` | object |
 | `selectors.py` | `@object_permissions` scope sites | object |
 | `serializers.py` | `permission_fields`, `permission_references` | field |
-| `views.py` | `@api_permission` — one per action, on the route that is it | endpoint |
+| `views.py` | `@api_permission` — one per endpoint, on the route that is it | endpoint |
 | `services.py` | nothing; it *enforces* with `@requires`, it does not declare | — |
 
-Declaring and enforcing are separate. A view declares that an action
+Declaring and enforcing are separate. A view declares that an endpoint
 exists, and gives it a label, because a view is the endpoint. A service
 enforces it with `@requires` / `@requires_object`, and a management
 command enforces the same key with no view in sight.
@@ -99,7 +99,7 @@ permission tiers and silently skips the domain invariant.
 | object | not used — no row exists yet | — |
 | field | `assert_writable` against `widget.create` | 403 |
 
-Uses `WidgetCreateSerializer`, whose `write_action = "create"`. An admin who
+Uses `WidgetCreateSerializer`, whose `write_endpoint = "create"`. An admin who
 may edit prices on an existing row has not thereby been granted the right to
 set one on a new row.
 

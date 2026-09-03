@@ -79,7 +79,7 @@ def _force_app_modules(report: LoadReport, names: tuple[str, ...]) -> None:
             # ``module_has_submodule`` distinguishes "this app has no
             # services.py" from "services.py raised ImportError".  The first is
             # ordinary; the second must surface, not be swallowed into a
-            # catalogue that is quietly missing an action.
+            # catalogue that is quietly missing an endpoint.
             if not module_has_submodule(config.module, name):
                 continue
             import_module(f"{config.name}.{name}")

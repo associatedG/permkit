@@ -36,7 +36,7 @@ _PENDING: ContextVar[list | None] = ContextVar("permkit_pending", default=None)
 def permission_object(key: str, *, model=None, label: str = "") -> None:
     """Bind an object key to its model.
 
-    The one fact no component declaration carries: a selector knows the action,
+    The one fact no component declaration carries: a selector knows the endpoint,
     a serializer knows the fields, a filter knows the condition — none of them
     names the model the object key stands for.  Declare it beside the object's
     filters, which is the file that is already about that object.
@@ -47,32 +47,32 @@ def permission_object(key: str, *, model=None, label: str = "") -> None:
 # ---------------------------------------------------------------- endpoint
 
 
-def api_permission(action_key: str, *, label: str = "") -> Callable:
-    """Declare that this component enforces an endpoint action.
+def api_permission(endpoint_key: str, *, label: str = "") -> Callable:
+    """Declare that this component enforces an endpoint.
 
     The endpoint tier is the simple one: a single yes/no per role, with no
     payload of its own.
 
-    Several components may enforce the same action — a list view and a detail
+    Several components may enforce the same endpoint — a list view and a detail
     view are usually one permission.  The first to declare it supplies the
     label and mode; the rest just name it, and are recorded as further places
     that enforce it.  There is deliberately no second way to say this: a
     component that named a key without declaring it would be invisible to the
-    catalogue, and one that declared an action it did not enforce would leave
+    catalogue, and one that declared an endpoint it did not enforce would leave
     an entry an admin can grant and nothing honours.
     """
 
     def decorator(target):
-        registry.register_action(
-            action_key,
+        registry.register_endpoint(
+            endpoint_key,
             label=label,
             target=f"{target.__module__}.{target.__qualname__}",
         )
-        target.permission_action = action_key
+        target.permission_endpoint = endpoint_key
         # The enforcement layer reads ``permission_key``; the declaration
         # already carries it, so the key is never written twice on one class.
         if getattr(target, "permission_key", None) is None:
-            target.permission_key = action_key
+            target.permission_key = endpoint_key
         return target
 
     return decorator
@@ -101,12 +101,12 @@ def field_groups(object_key: str, groups: Mapping[str, Any]) -> None:
 
 def object_permissions(
     object_key: str,
-    action_key: str,
+    endpoint_key: str,
     *,
     filters: Mapping[str, Any] | None = None,
     actor_kwarg: str = "fetched_by",
 ) -> Callable:
-    """Declare a selector as a permission site for ``object_key.action_key``.
+    """Declare a selector as a permission site for ``object_key.endpoint_key``.
 
     ``filters`` maps a filter key to either a ``Q`` (a static condition) or a
     callable taking the request :class:`~permkit.base.Context` and returning
@@ -128,7 +128,7 @@ def object_permissions(
 
         registry.register_scope_point(
             object_key,
-            action_key,
+            endpoint_key,
             target=f"{fn.__module__}.{fn.__qualname__}",
         )
 
@@ -141,7 +141,7 @@ def object_permissions(
                 )
             token = _PENDING.set(
                 {
-                    "key": f"{object_key}.{action_key}",
+                    "key": f"{object_key}.{endpoint_key}",
                     "actor": kwargs[actor_kwarg],
                     "applied": False,
                 }
@@ -151,7 +151,7 @@ def object_permissions(
                 if not _PENDING.get()["applied"]:
                     raise ConfigurationError(
                         f"{fn.__module__}.{fn.__qualname__} declares object "
-                        f"permissions for {object_key}.{action_key} but never "
+                        f"permissions for {object_key}.{endpoint_key} but never "
                         f"called apply_permissions(). Declaring filters "
                         f"without applying them means an administrator can "
                         f"configure a rule that silently does nothing."
@@ -161,7 +161,7 @@ def object_permissions(
                 _PENDING.reset(token)
 
         wrapper.permission_object = object_key
-        wrapper.permission_action = action_key
+        wrapper.permission_endpoint = endpoint_key
         return wrapper
 
     return decorator

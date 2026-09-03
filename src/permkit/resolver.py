@@ -109,7 +109,7 @@ class Policy:
 
         roles = self.roles_for(user)
 
-        # Being unable to perform the action at all implies there are no rows
+        # Being unable to reach the endpoint at all implies there are no rows
         # to perform it on.  Without this, a role holding an object grant but
         # no endpoint grant would pass ``require_object`` — a caller reaching
         # the service layer directly (task, command, admin) would never have
@@ -138,7 +138,7 @@ class Policy:
                 condition_spec = self.registry.condition(condition_id)
                 # A filter declared for one object must not be composed onto
                 # another.  Left unchecked, a ``crate`` filter on a ``widget``
-                # action compiles happily and filters widgets on the wrong
+                # endpoint compiles happily and filters widgets on the wrong
                 # column — no error, plausible rows, silently wrong.
                 if (
                     condition_spec.object_key is not None
@@ -268,7 +268,7 @@ class Policy:
         """
         spec = self._spec(key)
 
-        # 0. may they perform this action at all
+        # 0. may they reach this endpoint at all
         #
         # Defence in depth rather than the primary gate — that is the caller's
         # ``@requires``.  But this check only judges *controlled* fields, so a

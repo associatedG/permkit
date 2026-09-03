@@ -78,7 +78,7 @@ class PermissionRequired(BasePermission):
         action = getattr(view, "action", None)
         if keys and action:
             return keys.get(action)
-        return getattr(view, "permission_action", None)
+        return getattr(view, "permission_endpoint", None)
 
     # -- hooks ------------------------------------------------------------
 
@@ -155,8 +155,8 @@ class FieldPermissionMixin:
     #: ``{"crate": "crate.view"}`` — foreign keys whose target rows are governed
     #: by another key.  The serializer is where the payload's shape is known.
     permission_references: dict = {}
-    read_action: str = "view"
-    write_action: str = "update"
+    read_endpoint: str = "view"
+    write_endpoint: str = "update"
 
     read_permission_key: str = ""
     write_permission_key: str = ""
@@ -176,9 +176,9 @@ class FieldPermissionMixin:
             registry.register_references(obj, own["permission_references"])
 
         if "read_permission_key" not in own:
-            cls.read_permission_key = f"{obj}.{cls.read_action}"
+            cls.read_permission_key = f"{obj}.{cls.read_endpoint}"
         if "write_permission_key" not in own:
-            cls.write_permission_key = f"{obj}.{cls.write_action}"
+            cls.write_permission_key = f"{obj}.{cls.write_endpoint}"
 
     def _user(self):
         request = self.context.get("request")

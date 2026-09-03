@@ -85,10 +85,10 @@ class RegisteredFilter(CatalogueEntry):
         return self.key
 
 
-class RegisteredAction(CatalogueEntry):
-    """An endpoint action — declared by ``@api_permission``.
+class RegisteredEndpoint(CatalogueEntry):
+    """An endpoint — declared by ``@api_permission``.
 
-    ``targets`` lists every component that enforces it.  An action with no
+    ``targets`` lists every component that enforces it.  An endpoint with no
     target cannot be registered at all, which is what makes "a catalogue entry
     nobody honours" unrepresentable rather than merely detectable.
     """
@@ -97,9 +97,8 @@ class RegisteredAction(CatalogueEntry):
     targets = models.JSONField(default=list, blank=True)
 
     class Meta:
-        # "Endpoint" is what the tier is called everywhere else; "action" is
-        # the internal name and has no business being the first word an
-        # administrator reads.
+        # The model was called RegisteredAction until the vocabulary was
+        # unified; "endpoint" is what the tier is called everywhere else.
         ordering = ("key",)
         verbose_name = "declared endpoint"
         verbose_name_plural = "declared endpoints"
@@ -150,24 +149,24 @@ class RegisteredScopePoint(CatalogueEntry):
     object = models.ForeignKey(
         RegisteredObject, on_delete=models.CASCADE, related_name="scope_points"
     )
-    action_key = models.CharField(max_length=100)
+    endpoint_key = models.CharField(max_length=100)
     #: ``"tests.dummy.selectors.widget_list"`` — the selector that applies it.
     target = models.CharField(max_length=500, blank=True)
 
     class Meta:
-        ordering = ("object__key", "action_key", "target")
+        ordering = ("object__key", "endpoint_key", "target")
         verbose_name = "declared enforcement point"
         verbose_name_plural = "declared enforcement points"
         constraints = [
             models.UniqueConstraint(
-                fields=("object", "action_key", "target"),
+                fields=("object", "endpoint_key", "target"),
                 name="permkit_unique_scope_point",
             )
         ]
 
     @property
     def key(self) -> str:
-        return f"{self.object.key}.{self.action_key}"
+        return f"{self.object.key}.{self.endpoint_key}"
 
     def __str__(self) -> str:
         return f"{self.key} @ {self.target}"
