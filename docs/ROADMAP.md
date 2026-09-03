@@ -233,7 +233,8 @@ transaction rolled back.
   their own copies, and any window where one has not been told is a window
   where somebody keeps access they no longer have.
 - **Audit trail.** Who changed which grant, when. Once non-developers can edit
-  access this is a real gap; `pmso-service` already has an `audit` app to hook.
+  access this is a real gap. Most projects adopting permkit already have an
+  audit app to hook into.
 - **Registry reset between tests.** The registry is process-wide and never
   reset, so a test that registers anything leaks into every later test.
   Partly mitigated: the catalogue tests build isolated `Registry` instances
