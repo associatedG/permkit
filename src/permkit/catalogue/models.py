@@ -49,6 +49,8 @@ class RegisteredObject(CatalogueEntry):
 
     class Meta:
         ordering = ("key",)
+        verbose_name = "declared object"
+        verbose_name_plural = "declared objects"
 
     def __str__(self) -> str:
         return self.key
@@ -76,6 +78,8 @@ class RegisteredFilter(CatalogueEntry):
 
     class Meta:
         ordering = ("object__key", "key")
+        verbose_name = "declared row filter"
+        verbose_name_plural = "declared row filters"
 
     def __str__(self) -> str:
         return self.key
@@ -93,7 +97,12 @@ class RegisteredAction(CatalogueEntry):
     targets = models.JSONField(default=list, blank=True)
 
     class Meta:
+        # "Endpoint" is what the tier is called everywhere else; "action" is
+        # the internal name and has no business being the first word an
+        # administrator reads.
         ordering = ("key",)
+        verbose_name = "declared endpoint"
+        verbose_name_plural = "declared endpoints"
 
     def __str__(self) -> str:
         return self.key
@@ -114,6 +123,8 @@ class RegisteredFieldGroup(CatalogueEntry):
 
     class Meta:
         ordering = ("object__key", "key")
+        verbose_name = "declared field group"
+        verbose_name_plural = "declared field groups"
         constraints = [
             models.UniqueConstraint(
                 fields=("object", "key"), name="permkit_unique_field_group"
@@ -145,6 +156,8 @@ class RegisteredScopePoint(CatalogueEntry):
 
     class Meta:
         ordering = ("object__key", "action_key", "target")
+        verbose_name = "declared enforcement point"
+        verbose_name_plural = "declared enforcement points"
         constraints = [
             models.UniqueConstraint(
                 fields=("object", "action_key", "target"),
