@@ -245,6 +245,25 @@ transaction rolled back.
 
 ---
 
+## Found by the first real integration
+
+Wiring permkit into a Django project with generic views surfaced three things
+the dummy domain could not, because every dummy view enforces exactly one
+endpoint:
+
+- **A component may enforce two endpoints.** A `ListCreateAPIView` is a list on
+  GET and a create on POST — two keys, deliberately. Stacked `@api_permission`
+  decorators left `permission_key` set to whichever ran first, and the endpoint
+  check silently asked about that one. Both singular attributes are now cleared
+  when a component declares more than one, so it must name them per operation.
+- **`permission_keys` had no story for generic views.** It resolved through
+  DRF's `action`, which only ViewSets have. It now accepts HTTP methods too,
+  and wins over a single `permission_key` — the more specific declaration
+  cannot be the one that loses.
+- **`DECLARATION_MODULES` replaced the default list rather than extending it.**
+  A project adding one `permkit_declarations.py` had to restate the other eight
+  names to keep them. It is additive now; the setting cannot shrink the list.
+
 ## Deliberate non-goals
 
 - **Role inheritance.** Expressed by composition instead: a manager holds the

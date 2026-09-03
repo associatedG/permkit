@@ -85,7 +85,9 @@ PERMKIT = {
     "CACHE_ROLES": True,
 
     "CONTEXT_BUILDER": None,      # callable(user) -> permkit.Context
-    "DECLARATION_MODULES": None,  # None = the conventional list; see below
+    # ADDS to the conventional list, never replaces it. Name only the extra
+    # module, e.g. ["permkit_declarations"].
+    "DECLARATION_MODULES": None,
 }
 ```
 

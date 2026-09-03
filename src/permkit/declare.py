@@ -68,11 +68,34 @@ def api_permission(endpoint_key: str, *, label: str = "") -> Callable:
             label=label,
             target=f"{target.__module__}.{target.__qualname__}",
         )
-        target.permission_endpoint = endpoint_key
-        # The enforcement layer reads ``permission_key``; the declaration
-        # already carries it, so the key is never written twice on one class.
-        if getattr(target, "permission_key", None) is None:
-            target.permission_key = endpoint_key
+        # A component may enforce more than one endpoint — a ListCreateAPIView
+        # serving a list on GET and a create on POST. Then there is no single
+        # key, and leaving whichever decorator ran first would have the
+        # enforcement layer silently check an arbitrary one. Both singular
+        # attributes are cleared instead, so the component must say which key
+        # belongs to which operation through ``permission_keys``.
+        #
+        # ``__dict__`` rather than getattr: an inherited value belongs to the
+        # parent's declaration, not this one.
+        own = target.__dict__
+        seen = tuple(own.get("permission_endpoints") or ())
+        if not seen and own.get("permission_endpoint"):
+            seen = (own["permission_endpoint"],)
+        endpoints = tuple(dict.fromkeys((*seen, endpoint_key)))
+        target.permission_endpoints = endpoints
+
+        if len(endpoints) == 1:
+            target.permission_endpoint = endpoint_key
+            # The enforcement layer reads ``permission_key``; the declaration
+            # already carries it, so the key is never written twice on one class.
+            if getattr(target, "permission_key", None) is None:
+                target.permission_key = endpoint_key
+        else:
+            target.permission_endpoint = None
+            # Clear it only if a previous decorator is what put it there. A key
+            # the developer wrote by hand is a deliberate choice and stands.
+            if own.get("permission_key") in seen:
+                target.permission_key = None
         return target
 
     return decorator

@@ -68,22 +68,41 @@ class PermissionRequired(BasePermission):
 
     # -- key resolution ---------------------------------------------------
 
-    def _key_for(self, view) -> str | None:
+    def _key_for(self, view, request=None) -> str | None:
+        """The key this request is asking about.
+
+        ``permission_keys`` is consulted first and wins, because a view that
+        declares one key per operation means it — a single ``permission_key``
+        on the same view can only be the less specific answer.
+
+        It is keyed by DRF's ``action`` for a ViewSet, or by HTTP method for a
+        generic view. Generic views have no ``action``, and a
+        ``ListCreateAPIView`` serving a list on GET and a create on POST needs
+        two different keys — so method is the only thing that separates them::
+
+            permission_keys = {"GET": "product.view", "POST": "product.create"}
+        """
         if self.key:
             return self.key
+
+        keys = getattr(view, "permission_keys", None)
+        if keys:
+            action = getattr(view, "action", None)
+            if action and action in keys:
+                return keys[action]
+            method = getattr(request, "method", None)
+            if method and method.upper() in keys:
+                return keys[method.upper()]
+
         key = getattr(view, "permission_key", None)
         if key:
             return key
-        keys = getattr(view, "permission_keys", None)
-        action = getattr(view, "action", None)
-        if keys and action:
-            return keys.get(action)
         return getattr(view, "permission_endpoint", None)
 
     # -- hooks ------------------------------------------------------------
 
     def has_permission(self, request, view) -> bool:
-        key = self._key_for(view)
+        key = self._key_for(view, request)
         if not key:
             # An undeclared view is a configuration bug; deny rather than
             # quietly allow.
@@ -94,7 +113,7 @@ class PermissionRequired(BasePermission):
             return False
 
     def has_object_permission(self, request, view, obj) -> bool:
-        key = getattr(view, "object_key", None) or self._key_for(view)
+        key = getattr(view, "object_key", None) or self._key_for(view, request)
         if not key:
             return False
         try:

@@ -167,7 +167,18 @@ class WidgetListApi(generics.ListAPIView):
   components disagreeing about what an endpoint *is* is a config bug.
 - Several views may share one endpoint (a list and its detail are usually one
   permission).
-- `@api_permission` sets `permission_key` for you.
+- `@api_permission` sets `permission_key` for you — **unless the component
+  enforces more than one endpoint**, in which case there is no single key and
+  you must say which key belongs to which operation:
+
+```python
+@api_permission("product.view", label="Xem danh sách sản phẩm")
+@api_permission("product.create", label="Tạo mới sản phẩm")
+class ProductListCreateAPIView(generics.ListCreateAPIView):
+    # Keyed by HTTP method for a generic view, or by DRF `action` for a
+    # ViewSet. Without this the endpoint check denies rather than guessing.
+    permission_keys = {"GET": "product.view", "POST": "product.create"}
+```
 
 Non-HTTP paths use the decorators, which work in tasks, commands and admin
 actions where no DRF permission class ever runs:

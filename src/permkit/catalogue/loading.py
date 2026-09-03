@@ -28,10 +28,11 @@ from django.apps import apps
 from django.urls import URLResolver, get_resolver
 from django.utils.module_loading import module_has_submodule
 
-#: Where declarations conventionally live.  Override with
-#: ``PERMKIT = {"DECLARATION_MODULES": [...]}`` for a project that names them
-#: differently; the cost of a wrong list is a silently thin catalogue, so the
-#: default is deliberately generous.
+#: Where declarations conventionally live.  ``PERMKIT =
+#: {"DECLARATION_MODULES": [...]}`` *adds* to this rather than replacing it, so
+#: a project with a dedicated ``permkit_declarations.py`` names only that. The
+#: cost of a missing name is a silently thin catalogue, so the default is
+#: deliberately generous and the setting cannot shrink it.
 DEFAULT_DECLARATION_MODULES = (
     "filters",
     "selectors",
@@ -94,7 +95,11 @@ def load_declarations(*, urlconf: bool = True) -> LoadReport:
     from ..conf import get_setting
 
     report = LoadReport()
-    names = tuple(get_setting("DECLARATION_MODULES") or DEFAULT_DECLARATION_MODULES)
+    # Additive, not a replacement: the setting exists to cover names the
+    # default list does not, and a project adding one should not have to
+    # restate the other eight to keep them.
+    extra = tuple(get_setting("DECLARATION_MODULES") or ())
+    names = tuple(dict.fromkeys((*DEFAULT_DECLARATION_MODULES, *extra)))
     _force_app_modules(report, names)
     if urlconf:
         _force_urlconf(report)
