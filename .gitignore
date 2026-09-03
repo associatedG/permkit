@@ -7,3 +7,5 @@ dist/
 .venv/
 venv/
 db.sqlite3
+# Whatever PERMKIT_DB points at for the runnable dummy demo.
+*.sqlite3
