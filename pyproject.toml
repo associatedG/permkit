@@ -6,7 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "permkit"
 version = "0.1.0"
 description = "Role-based authorization for Django: endpoint, object and field tiers, configured in data."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+classifiers = [
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Private :: Do Not Upload",
+]
 dependencies = [
     "django>=5.2",
 ]
